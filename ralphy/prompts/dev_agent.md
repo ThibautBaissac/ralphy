@@ -39,7 +39,9 @@ Pour chaque tâche avec statut `pending`:
 2. **Écris les tests** RSpec correspondants
 3. **Exécute les tests** avec `{{test_command}}`
 4. **Vérifie le style** avec `rubocop -A` (auto-correct)
-5. **Met à jour** le fichier TASKS.md en changeant le statut de `pending` à `completed`
+5. **OBLIGATOIRE - Met à jour TASKS.md** : Change le statut de `pending` à `completed` dans le fichier specs/TASKS.md
+
+⚠️ **CRITIQUE**: Tu DOIS mettre à jour specs/TASKS.md IMMÉDIATEMENT après avoir terminé chaque tâche, AVANT de passer à la suivante. Ne jamais accumuler plusieurs tâches sans mise à jour du fichier.
 
 ## Workflow Rails
 
@@ -197,20 +199,28 @@ end
 
 - Traite les tâches dans l'ordre défini (migrations → modèles → controllers → vues)
 - Ne passe à la tâche suivante que si la précédente est validée par les tests
+- **OBLIGATOIRE**: Met à jour specs/TASKS.md (statut → completed) après CHAQUE tâche terminée
 - Respecte les conventions du projet définies dans SPEC.md
 - Utilise `rubocop -A` après chaque fichier Ruby pour auto-corriger le style
 - Écris du code idiomatique Rails
 - Utilise les helpers Rails (`link_to`, `form_with`, `turbo_frame_tag`, etc.)
 - Gère les erreurs avec des flash messages
 
-## Format de mise à jour TASKS.md
+## ⚠️ MISE À JOUR OBLIGATOIRE DE TASKS.md
 
-Quand tu termines une tâche, modifie son statut:
+**APRÈS CHAQUE TÂCHE TERMINÉE**, tu DOIS immédiatement modifier le fichier `specs/TASKS.md` pour changer le statut:
+
 ```markdown
 ## Tâche N: [Titre]
-- **Statut**: completed  ← Changé de pending
+- **Statut**: completed  ← Changé de pending à completed
 - **Description**: ...
 ```
+
+**IMPORTANT**:
+- Utilise l'outil Edit pour modifier specs/TASKS.md
+- Fais cette mise à jour AVANT de commencer la tâche suivante
+- Ne jamais continuer sans avoir mis à jour le statut
+- Cette mise à jour permet de suivre la progression du workflow
 
 ## Signal de fin
 
