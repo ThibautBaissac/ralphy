@@ -35,10 +35,12 @@ class BaseAgent(ABC):
         project_path: Path,
         config: ProjectConfig,
         on_output: Optional[Callable[[str], None]] = None,
+        model: Optional[str] = None,
     ):
         self.project_path = project_path
         self.config = config
         self.on_output = on_output
+        self.model = model
         self.logger = get_logger()
 
     @abstractmethod
@@ -153,6 +155,7 @@ class BaseAgent(ABC):
                 timeout=agent_timeout,
                 on_output=self.on_output,
                 circuit_breaker=circuit_breaker,
+                model=self.model,
             )
 
             response = runner.run(prompt)

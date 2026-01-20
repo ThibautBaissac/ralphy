@@ -9,12 +9,27 @@ Ralphy is an AI-powered development automation tool that transforms a Product Re
 ## Development Commands
 
 ### Setup and Installation
+
+For development (contributing to Ralphy):
 ```bash
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
 # Install in development mode with dependencies
 pip install -e ".[dev]"
 
 # Verify installation
 ralphy --version
+```
+
+For usage (installing as a CLI tool):
+```bash
+# Option 1: pipx (recommended for CLI tools)
+pipx install -e /path/to/Ralphy/
+
+# Option 2: uv (fastest)
+uv tool install -e /path/to/Ralphy/
 ```
 
 ### Testing
@@ -143,12 +158,15 @@ Hierarchical config from `.ralphy/config.yaml`:
 ```python
 ProjectConfig
   ├── TimeoutConfig      # Per-phase timeouts (spec: 30min, impl: 4h, qa: 30min, pr: 10min)
+  ├── ModelConfig        # Per-phase Claude models (specification, implementation, qa, pr)
   ├── StackConfig        # language, test_command
   ├── RetryConfig        # max_attempts, delay_seconds
   └── CircuitBreakerConfig  # All trigger thresholds
 ```
 
 **Defaults are sensible** - most projects don't need custom config. Only specify when needed.
+
+**Model selection**: Each phase can use a different Claude model. The model is passed to Claude Code CLI via `--model <model>` flag. This allows cost/performance optimization (e.g., use `opus` for complex implementation, `haiku` for simple PR creation).
 
 ## Critical Implementation Details
 
@@ -219,6 +237,19 @@ Edit `.ralphy/config.yaml` in target project:
 timeouts:
   implementation: 7200  # 2 hours instead of default 4
 ```
+
+### Configuring Models per Phase
+Specify different Claude models for each phase in `.ralphy/config.yaml`:
+```yaml
+models:
+  specification: sonnet    # Fast, good for spec generation
+  implementation: opus     # Most capable for complex implementation
+  qa: sonnet              # Good balance for QA analysis
+  pr: haiku               # Fast, simple PR creation
+```
+
+Supported values: `sonnet`, `opus`, `haiku`, or full model names like `claude-sonnet-4-5-20250929`.
+Default: All phases use `sonnet` if not specified.
 
 ### Adding Circuit Breaker Trigger
 1. Add trigger type to `TriggerType` enum in `circuit_breaker.py`

@@ -156,6 +156,7 @@ class Orchestrator:
                 project_path=self.project_path,
                 config=self.config,
                 on_output=self.on_output,
+                model=self.config.models.specification,
             )
 
             result = agent.run(timeout=self.config.timeouts.specification)
@@ -202,6 +203,7 @@ class Orchestrator:
                 project_path=self.project_path,
                 config=self.config,
                 on_output=self.on_output,
+                model=self.config.models.implementation,
             )
 
             result = agent.run(timeout=self.config.timeouts.implementation)
@@ -233,6 +235,7 @@ class Orchestrator:
                 project_path=self.project_path,
                 config=self.config,
                 on_output=self.on_output,
+                model=self.config.models.qa,
             )
 
             result = self._qa_agent.run(timeout=self.config.timeouts.qa)
@@ -255,6 +258,7 @@ class Orchestrator:
             self._qa_agent = QAAgent(
                 project_path=self.project_path,
                 config=self.config,
+                model=self.config.models.qa,
             )
 
         qa_summary = self._qa_agent.get_report_summary()
@@ -282,6 +286,7 @@ class Orchestrator:
                 project_path=self.project_path,
                 config=self.config,
                 on_output=self.on_output,
+                model=self.config.models.pr,
             )
 
             result = agent.run(timeout=self.config.timeouts.pr)

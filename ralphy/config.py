@@ -56,6 +56,20 @@ class CircuitBreakerConfig:
 
 
 @dataclass
+class ModelConfig:
+    """Configuration des modèles Claude par phase.
+
+    Utilise des alias ('sonnet', 'opus', 'haiku') ou noms complets de modèle.
+    Par défaut, toutes les phases utilisent 'sonnet'.
+    """
+
+    specification: str = "sonnet"  # Phase 1: spec-agent
+    implementation: str = "sonnet"  # Phase 2: dev-agent
+    qa: str = "sonnet"  # Phase 3: qa-agent
+    pr: str = "sonnet"  # Phase 4: pr-agent
+
+
+@dataclass
 class StackConfig:
     """Configuration de la stack technique."""
 
@@ -69,6 +83,7 @@ class ProjectConfig:
 
     name: str = "my-project"
     timeouts: TimeoutConfig = field(default_factory=TimeoutConfig)
+    models: ModelConfig = field(default_factory=ModelConfig)
     stack: StackConfig = field(default_factory=StackConfig)
     retry: RetryConfig = field(default_factory=RetryConfig)
     circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
@@ -77,6 +92,7 @@ class ProjectConfig:
     def from_dict(cls, data: dict) -> "ProjectConfig":
         """Crée une config depuis un dictionnaire."""
         timeouts_data = data.get("timeouts", {})
+        models_data = data.get("models", {})
         stack_data = data.get("stack", {})
         project_data = data.get("project", {})
         retry_data = data.get("retry", {})
@@ -88,6 +104,13 @@ class ProjectConfig:
             qa=timeouts_data.get("qa", 1800),
             pr=timeouts_data.get("pr", 600),
             agent=timeouts_data.get("agent", 300),
+        )
+
+        models = ModelConfig(
+            specification=models_data.get("specification", "sonnet"),
+            implementation=models_data.get("implementation", "sonnet"),
+            qa=models_data.get("qa", "sonnet"),
+            pr=models_data.get("pr", "sonnet"),
         )
 
         stack = StackConfig(
@@ -112,6 +135,7 @@ class ProjectConfig:
         return cls(
             name=project_data.get("name", "my-project"),
             timeouts=timeouts,
+            models=models,
             stack=stack,
             retry=retry,
             circuit_breaker=circuit_breaker,
@@ -127,6 +151,12 @@ class ProjectConfig:
                 "qa": self.timeouts.qa,
                 "pr": self.timeouts.pr,
                 "agent": self.timeouts.agent,
+            },
+            "models": {
+                "specification": self.models.specification,
+                "implementation": self.models.implementation,
+                "qa": self.models.qa,
+                "pr": self.models.pr,
             },
             "stack": {
                 "language": self.stack.language,

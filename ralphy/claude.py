@@ -44,11 +44,13 @@ class ClaudeRunner:
         timeout: int = 300,
         on_output: Optional[Callable[[str], None]] = None,
         circuit_breaker: Optional[CircuitBreaker] = None,
+        model: Optional[str] = None,
     ):
         self.working_dir = working_dir
         self.timeout = timeout
         self.on_output = on_output
         self.circuit_breaker = circuit_breaker
+        self.model = model
         self._process: Optional[subprocess.Popen] = None
         self._abort_event = threading.Event()
         self._cb_triggered = False
@@ -162,9 +164,13 @@ class ClaudeRunner:
             "claude",
             "--print",
             "--dangerously-skip-permissions",
-            "-p",
-            prompt,
         ]
+
+        # Add model if specified
+        if self.model:
+            cmd.extend(["--model", self.model])
+
+        cmd.extend(["-p", prompt])
 
         try:
             self._process = subprocess.Popen(

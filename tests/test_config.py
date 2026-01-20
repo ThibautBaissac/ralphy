@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ralphy.config import (
+    ModelConfig,
     ProjectConfig,
     StackConfig,
     TimeoutConfig,
@@ -14,6 +15,18 @@ from ralphy.config import (
     load_config,
     save_config,
 )
+
+
+class TestModelConfig:
+    """Tests pour ModelConfig."""
+
+    def test_default_values(self):
+        """Test des valeurs par défaut."""
+        config = ModelConfig()
+        assert config.specification == "sonnet"
+        assert config.implementation == "sonnet"
+        assert config.qa == "sonnet"
+        assert config.pr == "sonnet"
 
 
 class TestTimeoutConfig:
@@ -45,6 +58,7 @@ class TestProjectConfig:
             "project": {"name": "test-project"},
             "stack": {"language": "python", "test_command": "pytest"},
             "timeouts": {"specification": 600},
+            "models": {"implementation": "opus", "pr": "haiku"},
         }
         config = ProjectConfig.from_dict(data)
         assert config.name == "test-project"
@@ -52,16 +66,26 @@ class TestProjectConfig:
         assert config.timeouts.specification == 600
         # Valeurs par défaut pour les non-spécifiées
         assert config.timeouts.implementation == 14400
+        # Valeurs des modèles
+        assert config.models.implementation == "opus"
+        assert config.models.pr == "haiku"
+        # Valeurs par défaut pour modèles non-spécifiés
+        assert config.models.specification == "sonnet"
+        assert config.models.qa == "sonnet"
 
     def test_to_dict(self):
         """Test de conversion en dictionnaire."""
         config = ProjectConfig(
             name="my-app",
             stack=StackConfig(language="go", test_command="go test"),
+            models=ModelConfig(implementation="opus", pr="haiku"),
         )
         data = config.to_dict()
         assert data["project"]["name"] == "my-app"
         assert data["stack"]["language"] == "go"
+        assert data["models"]["implementation"] == "opus"
+        assert data["models"]["pr"] == "haiku"
+        assert data["models"]["specification"] == "sonnet"
 
 
 class TestConfigIO:

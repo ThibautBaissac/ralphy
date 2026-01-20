@@ -416,6 +416,12 @@ Fichier `.ralphy/config.yaml` :
 project:
   name: "my-project"
 
+models:
+  specification: "sonnet"    # ou opus, haiku, ou nom complet du modèle
+  implementation: "opus"     # modèle le plus puissant pour l'implémentation
+  qa: "sonnet"
+  pr: "haiku"                # modèle rapide pour la création de PR
+
 timeouts:
   specification: 1800    # 30 min
   implementation: 14400  # 4h
