@@ -2,7 +2,7 @@
 
 import pytest
 
-from ralph.progress import ActivityType, Activity, OutputParser, ProgressDisplay, ProgressState
+from ralphy.progress import ActivityType, Activity, OutputParser, ProgressDisplay, ProgressState
 
 
 class TestActivityType:

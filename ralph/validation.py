@@ -1,4 +1,4 @@
-"""Système de validation humaine pour RalphWiggum."""
+"""Système de validation humaine pour Ralphy."""
 
 from pathlib import Path
 from typing import Optional
@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
 
-from ralph.logger import get_logger
+from ralphy.logger import get_logger
 
 
 class ValidationResult:

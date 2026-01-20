@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Optional
 
-from ralph.config import CircuitBreakerConfig
-from ralph.state import Phase
+from ralphy.config import CircuitBreakerConfig
+from ralphy.state import Phase
 
 
 class TriggerType(str, Enum):

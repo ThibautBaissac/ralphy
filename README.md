@@ -1,8 +1,8 @@
-# RalphWiggum
+# Ralphy
 
 Outil d'aide au développement de code par IA basé sur Claude Code.
 
-RalphWiggum transforme un PRD (Product Requirements Document) en Pull Request mergeable via une boucle autonome avec validation humaine aux étapes clés.
+Ralphy transforme un PRD (Product Requirements Document) en Pull Request mergeable via une boucle autonome avec validation humaine aux étapes clés.
 
 ## Installation
 
@@ -49,19 +49,19 @@ Créer un fichier `PRD.md` à la racine du projet :
 ### 2. Lancer le workflow
 
 ```bash
-ralph start /path/to/project
+ralphy start /path/to/project
 ```
 
 ### 3. Suivre le statut
 
 ```bash
-ralph status
+ralphy status
 ```
 
 ### 4. Interrompre si nécessaire
 
 ```bash
-ralph abort
+ralphy abort
 ```
 
 ## Workflow
@@ -90,12 +90,12 @@ PRD.md → [SPEC] → Validation → [DEV] → [QA] → Validation → [PR] → 
 Si vous rejetez à une validation, le workflow passe en état `REJECTED`. Pour relancer :
 
 ```bash
-ralph start /path/to/project
+ralphy start /path/to/project
 ```
 
 ## Configuration
 
-Créer `.ralph/config.yaml` pour personnaliser (optionnel) :
+Créer `.ralphy/config.yaml` pour personnaliser (optionnel) :
 
 ```yaml
 project:
@@ -126,7 +126,7 @@ circuit_breaker:
 
 ```
 my-project/
-├── .ralph/
+├── .ralphy/
 │   ├── state.json          # État du workflow
 │   └── config.yaml         # Configuration (optionnel)
 ├── specs/

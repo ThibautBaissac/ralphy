@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.claude import (
+from ralphy.claude import (
     PID_FILE,
     abort_running_claude,
     check_claude_installed,
@@ -42,7 +42,7 @@ class TestAbortRunningClaude:
         """Crée un projet temporaire."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
-            (project_path / ".ralph").mkdir()
+            (project_path / ".ralphy").mkdir()
             yield project_path
 
     def test_abort_without_pid_file(self, temp_project):

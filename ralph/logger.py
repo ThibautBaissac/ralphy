@@ -1,4 +1,4 @@
-"""Logging formaté pour RalphWiggum avec timestamps et couleurs."""
+"""Logging formaté pour Ralphy avec timestamps et couleurs."""
 
 from datetime import datetime
 from typing import Optional

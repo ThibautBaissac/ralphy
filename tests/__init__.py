@@ -1,1 +1,1 @@
-"""RalphWiggum tests package."""
+"""Ralphy tests package."""

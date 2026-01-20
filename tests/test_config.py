@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.config import (
+from ralphy.config import (
     ProjectConfig,
     StackConfig,
     TimeoutConfig,
@@ -91,10 +91,10 @@ class TestConfigIO:
         assert loaded.stack.language == "rust"
 
     def test_ensure_ralph_dir(self, temp_project):
-        """Test de création du dossier .ralph."""
+        """Test de création du dossier .ralphy."""
         ralph_dir = ensure_ralph_dir(temp_project)
         assert ralph_dir.exists()
-        assert ralph_dir.name == ".ralph"
+        assert ralph_dir.name == ".ralphy"
 
     def test_ensure_specs_dir(self, temp_project):
         """Test de création du dossier specs."""

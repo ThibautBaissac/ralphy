@@ -1,14 +1,14 @@
-"""Orchestrateur principal du workflow RalphWiggum."""
+"""Orchestrateur principal du workflow Ralphy."""
 
 from pathlib import Path
 from typing import Callable, Optional
 
-from ralph.agents import DevAgent, PRAgent, QAAgent, SpecAgent
-from ralph.config import ProjectConfig, ensure_ralph_dir, ensure_specs_dir, load_config
-from ralph.logger import get_logger
-from ralph.progress import ProgressDisplay
-from ralph.state import Phase, StateManager
-from ralph.validation import HumanValidator
+from ralphy.agents import DevAgent, PRAgent, QAAgent, SpecAgent
+from ralphy.config import ProjectConfig, ensure_ralph_dir, ensure_specs_dir, load_config
+from ralphy.logger import get_logger
+from ralphy.progress import ProgressDisplay
+from ralphy.state import Phase, StateManager
+from ralphy.validation import HumanValidator
 
 
 class WorkflowError(Exception):
@@ -24,7 +24,7 @@ class TransitionError(WorkflowError):
 
 
 class Orchestrator:
-    """Orchestrateur du workflow RalphWiggum."""
+    """Orchestrateur du workflow Ralphy."""
 
     def __init__(
         self,

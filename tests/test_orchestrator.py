@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from ralph.orchestrator import Orchestrator, WorkflowError
-from ralph.state import Phase, StateManager
+from ralphy.orchestrator import Orchestrator, WorkflowError
+from ralphy.state import Phase, StateManager
 
 
 class TestOrchestrator:
@@ -35,7 +35,7 @@ class TestOrchestrator:
     def test_abort_sets_failed(self, temp_project):
         """Test que abort passe en état failed."""
         (temp_project / "PRD.md").write_text("# Test PRD")
-        (temp_project / ".ralph").mkdir()
+        (temp_project / ".ralphy").mkdir()
 
         orchestrator = Orchestrator(temp_project)
         orchestrator.abort()
@@ -47,7 +47,7 @@ class TestOrchestrator:
     def test_running_workflow_blocks_new_start(self, temp_project):
         """Test qu'un workflow en cours bloque un nouveau démarrage."""
         (temp_project / "PRD.md").write_text("# Test PRD")
-        (temp_project / ".ralph").mkdir()
+        (temp_project / ".ralphy").mkdir()
 
         # Simule un workflow en cours
         state_manager = StateManager(temp_project)

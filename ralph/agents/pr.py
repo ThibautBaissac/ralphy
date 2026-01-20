@@ -3,8 +3,8 @@
 import re
 from typing import Optional
 
-from ralph.agents.base import AgentResult, BaseAgent
-from ralph.claude import ClaudeResponse
+from ralphy.agents.base import AgentResult, BaseAgent
+from ralphy.claude import ClaudeResponse
 
 
 class PRAgent(BaseAgent):

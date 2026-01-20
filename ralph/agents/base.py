@@ -1,4 +1,4 @@
-"""Classe de base pour les agents RalphWiggum."""
+"""Classe de base pour les agents Ralphy."""
 
 import time
 from abc import ABC, abstractmethod
@@ -7,11 +7,11 @@ from importlib import resources
 from pathlib import Path
 from typing import Callable, Optional
 
-from ralph.circuit_breaker import CircuitBreaker, CircuitBreakerContext
-from ralph.claude import ClaudeResponse, ClaudeRunner
-from ralph.config import ProjectConfig
-from ralph.logger import get_logger
-from ralph.state import Phase
+from ralphy.circuit_breaker import CircuitBreaker, CircuitBreakerContext
+from ralphy.claude import ClaudeResponse, ClaudeRunner
+from ralphy.config import ProjectConfig
+from ralphy.logger import get_logger
+from ralphy.state import Phase
 
 
 @dataclass
@@ -54,7 +54,7 @@ class BaseAgent(ABC):
     def load_prompt_template(self) -> str:
         """Charge le template de prompt depuis le package."""
         try:
-            return resources.files("ralph.prompts").joinpath(self.prompt_file).read_text(encoding="utf-8")
+            return resources.files("ralphy.prompts").joinpath(self.prompt_file).read_text(encoding="utf-8")
         except (FileNotFoundError, TypeError):
             self.logger.error(f"Template {self.prompt_file} non trouvé")
             return ""

@@ -1,4 +1,4 @@
-"""Gestion de la configuration projet RalphWiggum."""
+"""Gestion de la configuration projet Ralphy."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -148,8 +148,8 @@ class ProjectConfig:
 
 
 def load_config(project_path: Path) -> ProjectConfig:
-    """Charge la configuration depuis .ralph/config.yaml."""
-    config_path = project_path / ".ralph" / "config.yaml"
+    """Charge la configuration depuis .ralphy/config.yaml."""
+    config_path = project_path / ".ralphy" / "config.yaml"
 
     if not config_path.exists():
         return ProjectConfig()
@@ -161,8 +161,8 @@ def load_config(project_path: Path) -> ProjectConfig:
 
 
 def save_config(project_path: Path, config: ProjectConfig) -> None:
-    """Sauvegarde la configuration dans .ralph/config.yaml."""
-    ralph_dir = project_path / ".ralph"
+    """Sauvegarde la configuration dans .ralphy/config.yaml."""
+    ralph_dir = project_path / ".ralphy"
     ralph_dir.mkdir(parents=True, exist_ok=True)
 
     config_path = ralph_dir / "config.yaml"
@@ -171,8 +171,8 @@ def save_config(project_path: Path, config: ProjectConfig) -> None:
 
 
 def ensure_ralph_dir(project_path: Path) -> Path:
-    """S'assure que le dossier .ralph existe et retourne son chemin."""
-    ralph_dir = project_path / ".ralph"
+    """S'assure que le dossier .ralphy existe et retourne son chemin."""
+    ralph_dir = project_path / ".ralphy"
     ralph_dir.mkdir(parents=True, exist_ok=True)
     return ralph_dir
 

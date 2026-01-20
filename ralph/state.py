@@ -1,4 +1,4 @@
-"""Gestion de l'état du workflow RalphWiggum."""
+"""Gestion de l'état du workflow Ralphy."""
 
 import json
 from dataclasses import dataclass, field
@@ -97,7 +97,7 @@ class StateManager:
 
     def __init__(self, project_path: Path):
         self.project_path = project_path
-        self.state_file = project_path / ".ralph" / "state.json"
+        self.state_file = project_path / ".ralphy" / "state.json"
         self._state: Optional[WorkflowState] = None
 
     @property

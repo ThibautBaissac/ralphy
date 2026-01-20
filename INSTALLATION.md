@@ -1,4 +1,4 @@
-# Intégrer RalphWiggum dans un projet existant
+# Intégrer Ralphy dans un projet existant
 
 ## 1. Prérequis
 
@@ -18,18 +18,18 @@ gh auth status
 ## 2. Installation
 
 ```bash
-# Option A: Installation globale depuis le repo RalphWiggum
-pip install -e /Users/thibautbaissac/code/ThibautBaissac/RalphWiggum/
+# Option A: Installation globale depuis le repo Ralphy
+pip install -e /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
 
 # Option B: Installation dans un virtualenv
-cd /Users/thibautbaissac/code/ThibautBaissac/RalphWiggum/
+cd /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
 pip install -e ".[dev]"
 ```
 
 Vérifiez l'installation :
 
 ```bash
-ralph --version
+ralphy --version
 ```
 
 ## 3. Préparer votre projet
@@ -69,7 +69,7 @@ Créez `PRD.md` :
 
 ### 3.2 Configuration optionnelle
 
-Créez `.ralph/config.yaml` pour personnaliser :
+Créez `.ralphy/config.yaml` pour personnaliser :
 
 ```yaml
 project:
@@ -95,11 +95,11 @@ circuit_breaker:
 
 ```bash
 # Depuis n'importe où
-ralph start /path/to/mon-projet-existant
+ralphy start /path/to/mon-projet-existant
 
 # Ou depuis le projet
 cd /path/to/mon-projet-existant
-ralph start .
+ralphy start .
 ```
 
 ## 5. Workflow interactif
@@ -124,13 +124,13 @@ ralph start .
 
 ```bash
 # Voir le statut
-ralph status /path/to/mon-projet
+ralphy status /path/to/mon-projet
 
 # Interrompre si nécessaire
-ralph abort /path/to/mon-projet
+ralphy abort /path/to/mon-projet
 
 # Réinitialiser l'état
-ralph reset /path/to/mon-projet
+ralphy reset /path/to/mon-projet
 ```
 
 ## 7. Structure générée
@@ -139,7 +139,7 @@ Après exécution, votre projet aura :
 
 ```
 mon-projet-existant/
-├── .ralph/
+├── .ralphy/
 │   ├── state.json          # État du workflow
 │   └── config.yaml         # Config (si créée)
 ├── specs/
@@ -192,7 +192,7 @@ Permettre aux utilisateurs de se connecter via leur compte Google.
 Puis :
 
 ```bash
-ralph start .
+ralphy start .
 ```
 
 ## 10. Dépannage
@@ -201,13 +201,13 @@ ralph start .
 
 ```bash
 # Vérifier le statut
-ralph status .
+ralphy status .
 
 # Forcer l'arrêt
-ralph abort .
+ralphy abort .
 
 # Réinitialiser complètement
-ralph reset .
+ralphy reset .
 ```
 
 ### Erreur "PRD.md non trouvé"

@@ -5,14 +5,14 @@ import time
 
 import pytest
 
-from ralph.circuit_breaker import (
+from ralphy.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerContext,
     CircuitBreakerState,
     TriggerType,
 )
-from ralph.config import CircuitBreakerConfig
-from ralph.state import Phase
+from ralphy.config import CircuitBreakerConfig
+from ralphy.state import Phase
 
 
 class TestCircuitBreakerConfig:

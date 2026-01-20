@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from ralph.agents.base import AgentResult, BaseAgent
-from ralph.agents.dev import DevAgent
-from ralph.agents.spec import SpecAgent
-from ralph.claude import ClaudeResponse
-from ralph.config import ProjectConfig
+from ralphy.agents.base import AgentResult, BaseAgent
+from ralphy.agents.dev import DevAgent
+from ralphy.agents.spec import SpecAgent
+from ralphy.claude import ClaudeResponse
+from ralphy.config import ProjectConfig
 
 
 class ConcreteAgent(BaseAgent):

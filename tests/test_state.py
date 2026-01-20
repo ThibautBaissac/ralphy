@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.state import Phase, StateManager, Status, WorkflowState
+from ralphy.state import Phase, StateManager, Status, WorkflowState
 
 
 class TestWorkflowState:
@@ -56,7 +56,7 @@ class TestStateManager:
         """Crée un projet temporaire."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
-            (project_path / ".ralph").mkdir()
+            (project_path / ".ralphy").mkdir()
             yield project_path
 
     def test_load_default_state(self, temp_project):
@@ -123,7 +123,7 @@ class TestStateManager:
 
     def test_load_empty_state_file(self, temp_project):
         """Test du chargement d'un fichier state.json vide."""
-        state_file = temp_project / ".ralph" / "state.json"
+        state_file = temp_project / ".ralphy" / "state.json"
         state_file.write_text("")
 
         manager = StateManager(temp_project)
@@ -133,7 +133,7 @@ class TestStateManager:
 
     def test_load_corrupted_state_file(self, temp_project):
         """Test du chargement d'un fichier state.json corrompu."""
-        state_file = temp_project / ".ralph" / "state.json"
+        state_file = temp_project / ".ralphy" / "state.json"
         state_file.write_text("{invalid json content")
 
         manager = StateManager(temp_project)

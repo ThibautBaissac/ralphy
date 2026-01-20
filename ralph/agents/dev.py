@@ -3,8 +3,8 @@
 import re
 from typing import Tuple
 
-from ralph.agents.base import AgentResult, BaseAgent
-from ralph.claude import ClaudeResponse
+from ralphy.agents.base import AgentResult, BaseAgent
+from ralphy.claude import ClaudeResponse
 
 
 class DevAgent(BaseAgent):

@@ -1,4 +1,4 @@
-# RalphWiggum - Spécification Technique (MVP)
+# Ralphy - Spécification Technique (MVP)
 
 > Outil personnel d'aide au développement de code par IA basé sur Claude Code
 
@@ -10,7 +10,7 @@
 
 ## 1. Vision
 
-RalphWiggum transforme un PRD en Pull Request mergeable via une boucle autonome avec **validation humaine aux étapes clés**.
+Ralphy transforme un PRD en Pull Request mergeable via une boucle autonome avec **validation humaine aux étapes clés**.
 
 ---
 
@@ -239,7 +239,7 @@ Error: Cannot find module 'foo'  ← Trigger
 ### Configuration
 
 ```yaml
-# .ralph/config.yaml
+# .ralphy/config.yaml
 circuit_breaker:
   enabled: true
   inactivity_timeout: 60      # secondes
@@ -286,7 +286,7 @@ Le circuit breaker est **indépendant** du retry d'agent :
 
 ```
 my-project/
-├── .ralph/
+├── .ralphy/
 │   └── state.json          # État du workflow
 ├── specs/
 │   ├── SPEC.md             # Spécifications + architecture
@@ -383,13 +383,13 @@ Légende: CB = Circuit Breaker (section 6.1)
 
 ```bash
 # Démarrer un workflow
-ralph start /path/to/project
+ralphy start /path/to/project
 
 # Voir le statut
-ralph status
+ralphy status
 
 # Abort pendant l'implémentation
-ralph abort
+ralphy abort
 ```
 
 ### Affichage terminal
@@ -410,7 +410,7 @@ ralph abort
 
 ## 10. Configuration minimale
 
-Fichier `.ralph/config.yaml` :
+Fichier `.ralphy/config.yaml` :
 
 ```yaml
 project:

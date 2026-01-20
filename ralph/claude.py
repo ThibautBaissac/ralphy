@@ -12,13 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
-from ralph.logger import get_logger
+from ralphy.logger import get_logger
 
 if TYPE_CHECKING:
-    from ralph.circuit_breaker import CircuitBreaker
+    from ralphy.circuit_breaker import CircuitBreaker
 
 EXIT_SIGNAL = "EXIT_SIGNAL: true"
-PID_FILE = ".ralph/claude.pid"
+PID_FILE = ".ralphy/claude.pid"
 
 # Intervalle de vérification de l'abort (secondes)
 ABORT_CHECK_INTERVAL = 0.1

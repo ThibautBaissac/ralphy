@@ -1,4 +1,4 @@
-"""Interface CLI pour RalphWiggum."""
+"""Interface CLI pour Ralphy."""
 
 import sys
 from pathlib import Path
@@ -7,26 +7,26 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from ralph import __version__
-from ralph.claude import (
+from ralphy import __version__
+from ralphy.claude import (
     abort_running_claude,
     check_claude_installed,
     check_gh_installed,
     check_git_installed,
 )
-from ralph.config import load_config
-from ralph.logger import get_logger
-from ralph.orchestrator import Orchestrator
-from ralph.state import Phase, StateManager
+from ralphy.config import load_config
+from ralphy.logger import get_logger
+from ralphy.orchestrator import Orchestrator
+from ralphy.state import Phase, StateManager
 
 
 console = Console()
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="ralph")
+@click.version_option(version=__version__, prog_name="ralphy")
 def main():
-    """RalphWiggum - Transforme un PRD en Pull Request."""
+    """Ralphy - Transforme un PRD en Pull Request."""
     pass
 
 
@@ -34,7 +34,7 @@ def main():
 @click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True))
 @click.option("--no-progress", is_flag=True, help="Désactive l'affichage de progression")
 def start(project_path: str, no_progress: bool):
-    """Démarre un workflow RalphWiggum.
+    """Démarre un workflow Ralphy.
 
     PROJECT_PATH: Chemin vers le projet contenant PRD.md
     """
@@ -89,7 +89,7 @@ def status(project_path: str = None):
     state_manager = StateManager(project)
     state = state_manager.state
 
-    table = Table(title=f"Statut RalphWiggum - {project.name}")
+    table = Table(title=f"Statut Ralphy - {project.name}")
     table.add_column("Propriété", style="cyan")
     table.add_column("Valeur", style="green")
 
@@ -119,7 +119,7 @@ def status(project_path: str = None):
     if state.phase in (Phase.FAILED, Phase.REJECTED):
         console.print()
         console.print(
-            f"[dim]💡 Pour relancer le workflow: [cyan]ralph start {project}[/cyan][/dim]"
+            f"[dim]💡 Pour relancer le workflow: [cyan]ralphy start {project}[/cyan][/dim]"
         )
 
 

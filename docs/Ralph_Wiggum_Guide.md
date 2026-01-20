@@ -1,4 +1,4 @@
-# L'Approche Ralph Wiggum : Guide Complet du Développement Autonome avec Claude Code
+# L'Approche Ralphy : Guide Complet du Développement Autonome avec Claude Code
 
 ## Table des matières
 1. [Introduction](#introduction)
@@ -18,9 +18,9 @@
 
 ## Introduction
 
-L'approche **Ralph Wiggum** est une méthodologie de développement IA itérative qui transforme Claude Code d'un simple assistant de programmation en un "travailleur infatigable" capable de développer du code de manière autonome. Nommée d'après le personnage des Simpsons, cette technique incarne la philosophie de la **persistance itérative malgré les échecs**.
+L'approche **Ralphy** est une méthodologie de développement IA itérative qui transforme Claude Code d'un simple assistant de programmation en un "travailleur infatigable" capable de développer du code de manière autonome. Nommée d'après le personnage des Simpsons, cette technique incarne la philosophie de la **persistance itérative malgré les échecs**.
 
-En termes simples : au lieu de chercher la perfection dès le premier essai, Ralph Wiggum optimise pour l'**itération continue** jusqu'à ce que le travail soit accompli.
+En termes simples : au lieu de chercher la perfection dès le premier essai, Ralphy optimise pour l'**itération continue** jusqu'à ce que le travail soit accompli.
 
 ---
 
@@ -28,21 +28,21 @@ En termes simples : au lieu de chercher la perfection dès le premier essai, Ral
 
 ### Le Créateur : Geoffrey Huntley
 
-L'histoire de Ralph Wiggum commence vers **mai 2025** avec Geoffrey Huntley, un développeur open source chevronné qui s'était reconverti dans l'élevage de chèvres en Australie rurale. C'est dans cette ferme isolée qu'il a conçu cette méthodologie, qu'il a ensuite affinée dans un laboratoire de recherche à San Francisco.
+L'histoire de Ralphy commence vers **mai 2025** avec Geoffrey Huntley, un développeur open source chevronné qui s'était reconverti dans l'élevage de chèvres en Australie rurale. C'est dans cette ferme isolée qu'il a conçu cette méthodologie, qu'il a ensuite affinée dans un laboratoire de recherche à San Francisco.
 
 ### Chronologie
 
 | Date | Événement |
 |------|-----------|
 | Mai 2025 | Geoffrey Huntley crée la technique originale |
-| Septembre 2025 | Lancement officiel de "Cursed Lang", langage créé via Ralph |
+| Septembre 2025 | Lancement officiel de "Cursed Lang", langage créé via Ralphy |
 | Fin 2025 | La technique devient virale dans la communauté dev |
 | Fin 2025 | Boris Cherny (Head of Claude Code, Anthropic) formalise la technique en plugin officiel |
 | 2026 | Adoption massive et émergence d'outils communautaires |
 
-### Pourquoi "Ralph Wiggum" ?
+### Pourquoi "Ralphy" ?
 
-Le nom fait référence au personnage de Ralph Wiggum dans les Simpsons - un enfant qui persiste malgré tout, sans sophistication mais avec une détermination naïve. Cette métaphore capture l'essence de la technique : une **persistance brute** qui finit par produire des résultats.
+Le nom fait référence au personnage de Ralphy dans les Simpsons - un enfant qui persiste malgré tout, sans sophistication mais avec une détermination naïve. Cette métaphore capture l'essence de la technique : une **persistance brute** qui finit par produire des résultats.
 
 ---
 
@@ -50,7 +50,7 @@ Le nom fait référence au personnage de Ralph Wiggum dans les Simpsons - un enf
 
 ### La Boucle de Base
 
-Dans sa forme la plus pure, Ralph est une simple boucle Bash :
+Dans sa forme la plus pure, Ralphy est une simple boucle Bash :
 
 ```bash
 while :; do cat PROMPT.md | claude-code ; done
@@ -70,7 +70,7 @@ Avec le plugin officiel d'Anthropic, le processus est plus structuré :
 
 ```bash
 # Exécution unique
-/ralph-loop "Votre description de tâche" --completion-promise "DONE"
+/ralphy-loop "Votre description de tâche" --completion-promise "DONE"
 
 # Claude Code automatiquement :
 # 1. Travaille sur la tâche
@@ -88,7 +88,7 @@ Avec le plugin officiel d'Anthropic, le processus est plus structuré :
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    RALPH LOOP                        │
+│                    RALPHY LOOP                        │
 ├─────────────────────────────────────────────────────┤
 │  ┌─────────┐    ┌─────────────┐    ┌─────────────┐ │
 │  │ PROMPT  │───▶│ CLAUDE CODE │───▶│ CODE OUTPUT │ │
@@ -123,49 +123,49 @@ Avec le plugin officiel d'Anthropic, le processus est plus structuré :
 
 ### Option 1 : Plugin Officiel Anthropic
 
-Le plugin `ralph-wiggum` est disponible directement dans Claude Code :
+Le plugin `ralphy-wiggum` est disponible directement dans Claude Code :
 
 ```bash
 # Structure du plugin
-claude-code/plugins/ralph-wiggum/
+claude-code/plugins/ralphy-wiggum/
 ├── .claude-plugin          # Configuration du plugin
-├── commands/               # Implémentation des commandes Ralph
+├── commands/               # Implémentation des commandes Ralphy
 ├── hooks/                  # Logique du stop hook
 └── scripts/                # Scripts utilitaires
 ```
 
-### Option 2 : Ralph-Claude-Code (Communautaire)
+### Option 2 : Ralphy-Claude-Code (Communautaire)
 
 Pour des fonctionnalités avancées :
 
 ```bash
 # Installation
-git clone https://github.com/frankbria/ralph-claude-code.git
-cd ralph-claude-code
+git clone https://github.com/frankbria/ralphy-claude-code.git
+cd ralphy-claude-code
 ./install.sh
 
 # Configuration par projet
-ralph-setup mon-projet
+ralphy-setup mon-projet
 cd mon-projet
 
 # Ou importer des spécifications existantes
-ralph-import specifications.md mon-projet
+ralphy-import specifications.md mon-projet
 ```
 
 ### Options de Lancement
 
 ```bash
 # Avec surveillance tmux (recommandé)
-ralph --monitor
+ralphy --monitor
 
 # Avec délai personnalisé
-ralph --timeout 30        # Minutes
+ralphy --timeout 30        # Minutes
 
 # Mode verbose
-ralph --verbose
+ralphy --verbose
 ```
 
-### Structure de Projet Ralph
+### Structure de Projet Ralphy
 
 ```
 mon-projet/
@@ -233,7 +233,7 @@ Implémenter la feature X en suivant TDD :
 
 ```bash
 # Recommandé : toujours fixer une limite
-/ralph-loop "Implémenter feature X" --max-iterations 20
+/ralphy-loop "Implémenter feature X" --max-iterations 20
 ```
 
 **Inclure des instructions de blocage dans le prompt :**
@@ -249,7 +249,7 @@ Après 15 itérations, si incomplet :
 
 ## Cas d'Usage Appropriés
 
-### ✅ Quand Utiliser Ralph
+### ✅ Quand Utiliser Ralphy
 
 | Cas d'usage | Pourquoi ça fonctionne |
 |-------------|------------------------|
@@ -259,7 +259,7 @@ Après 15 itérations, si incomplet :
 | **Tâches avec vérification automatisée** | Linters, tests, type checking |
 | **Opérations de batch complexes** | Multi-heures, pendant la nuit |
 
-### ❌ Quand NE PAS Utiliser Ralph
+### ❌ Quand NE PAS Utiliser Ralphy
 
 | Cas d'usage | Pourquoi éviter |
 |-------------|-----------------|
@@ -273,27 +273,27 @@ Après 15 itérations, si incomplet :
 
 ## Philosophie et Principes
 
-### Les 4 Piliers de Ralph
+### Les 4 Piliers de Ralphy
 
 #### 1. Itération > Perfection
 > Ne visez pas la perfection au premier essai. Laissez la boucle affiner le travail.
 
-L'approche traditionnelle du codage IA vise le prompt parfait pour du code parfait immédiatement. Ralph **inverse** cette logique : optimiser pour l'itération, pas pour la perfection.
+L'approche traditionnelle du codage IA vise le prompt parfait pour du code parfait immédiatement. Ralphy **inverse** cette logique : optimiser pour l'itération, pas pour la perfection.
 
 #### 2. Les Échecs Sont des Données
 > Les échecs "déterministement mauvais" sont prévisibles et informatifs.
 
-Quand Ralph produit des erreurs, ce sont des **signaux** pour affiner les prompts - comme accorder un instrument de musique.
+Quand Ralphy produit des erreurs, ce sont des **signaux** pour affiner les prompts - comme accorder un instrument de musique.
 
 #### 3. La Compétence de l'Opérateur Compte
 > Le succès dépend de l'écriture de bons prompts, pas seulement d'avoir un bon modèle.
 
-Ralph n'est pas "fire and forget". Il requiert un opérateur compétent qui sait structurer les prompts et interpréter les échecs.
+Ralphy n'est pas "fire and forget". Il requiert un opérateur compétent qui sait structurer les prompts et interpréter les échecs.
 
 #### 4. La Persistance Gagne
 > Continuez d'essayer jusqu'au succès.
 
-La "persistance naïve" de Ralph - forcer le modèle à confronter ses propres échecs sans filet de sécurité - finit par produire des solutions correctes.
+La "persistance naïve" de Ralphy - forcer le modèle à confronter ses propres échecs sans filet de sécurité - finit par produire des solutions correctes.
 
 ### La Philosophie Originale vs. Officielle
 
@@ -319,7 +319,7 @@ La "persistance naïve" de Ralph - forcer le modèle à confronter ses propres �
 - Tests et revue inclus
 
 #### 3. Cursed Lang - Le Cas le Plus Spectaculaire
-Geoffrey Huntley a fait tourner Claude en boucle Ralph pendant **3 mois** :
+Geoffrey Huntley a fait tourner Claude en boucle Ralphy pendant **3 mois** :
 - Création d'un **langage de programmation complet**
 - Implémenté d'abord en C, puis Rust, puis Zig
 - Inclut une bibliothèque standard
@@ -331,13 +331,13 @@ Geoffrey Huntley a fait tourner Claude en boucle Ralph pendant **3 mois** :
 ## Outils et Extensions Communautaires
 
 ### Plugin Officiel
-- **Repo** : `anthropics/claude-code/plugins/ralph-wiggum`
+- **Repo** : `anthropics/claude-code/plugins/ralphy-wiggum`
 - Intégré directement dans Claude Code
-- Commandes `/ralph-loop` et `/cancel-ralph`
+- Commandes `/ralphy-loop` et `/cancel-ralphy`
 
 ### Forks Communautaires Populaires
 
-#### frankbria/ralph-claude-code (463 ⭐)
+#### frankbria/ralphy-claude-code (463 ⭐)
 **Fonctionnalités ajoutées :**
 - Détection intelligente de sortie (double condition)
 - Limitation de débit (100 appels/heure, configurable)
@@ -346,7 +346,7 @@ Geoffrey Huntley a fait tourner Claude en boucle Ralph pendant **3 mois** :
 - Dashboard de monitoring
 - Session persistante avec expiration configurable
 
-#### ralph-orchestrator (253 ⭐)
+#### ralphy-orchestrator (253 ⭐)
 **Fonctionnalités avancées :**
 - Support multi-IA
 - Récupération automatique d'erreurs
@@ -358,16 +358,16 @@ Geoffrey Huntley a fait tourner Claude en boucle Ralph pendant **3 mois** :
 
 ### État Actuel (2026)
 
-L'approche Ralph Wiggum a évolué de **"workaround nécessaire"** à **"outil power-user pour scénarios spécifiques"**.
+L'approche Ralphy a évolué de **"workaround nécessaire"** à **"outil power-user pour scénarios spécifiques"**.
 
 Avec les améliorations continues de Claude Code :
-- Les refactors simples ne nécessitent plus Ralph
+- Les refactors simples ne nécessitent plus Ralphy
 - Les capacités natives couvrent de plus en plus de cas
-- Ralph reste pertinent pour les **opérations batch complexes multi-heures**
+- Ralphy reste pertinent pour les **opérations batch complexes multi-heures**
 
-### Quand Utiliser Ralph en 2026
+### Quand Utiliser Ralphy en 2026
 
-| Scénario | Ralph nécessaire ? |
+| Scénario | Ralphy nécessaire ? |
 |----------|-------------------|
 | Refactor simple | Non - capacités natives suffisent |
 | Feature complexe multi-fichiers | Parfois |
@@ -377,31 +377,31 @@ Avec les améliorations continues de Claude Code :
 
 ### La Vision à Long Terme
 
-Ralph représente une étape vers le **codage agentique** - transformer l'IA d'un "pair programmer" en un **travailleur autonome** capable de "night shifts".
+Ralphy représente une étape vers le **codage agentique** - transformer l'IA d'un "pair programmer" en un **travailleur autonome** capable de "night shifts".
 
-> "Pour les power-users de Claude Code, Wiggum représente un shift du 'chat' avec l'IA vers la gestion de 'quarts de nuit' autonomes."
+> "Pour les power-users de Claude Code,  représente un shift du 'chat' avec l'IA vers la gestion de 'quarts de nuit' autonomes."
 
 ---
 
 ## Sources
 
 ### Sources Primaires
-- [Geoffrey Huntley - Ralph Wiggum Original](https://ghuntley.com/ralph/)
-- [Plugin Officiel Anthropic - README](https://github.com/anthropics/claude-code/blob/main/plugins/ralph-wiggum/README.md)
+- [Geoffrey Huntley - Ralphy Original](https://ghuntley.com/ralphy/)
+- [Plugin Officiel Anthropic - README](https://github.com/anthropics/claude-code/blob/main/plugins/ralphy-wiggum/README.md)
 - [Geoffrey Huntley - Cursed Lang](https://ghuntley.com/cursed/)
 
 ### Sources Communautaires
-- [frankbria/ralph-claude-code](https://github.com/frankbria/ralph-claude-code)
-- [ghuntley/how-to-ralph-wiggum](https://github.com/ghuntley/how-to-ralph-wiggum)
-- [Awesome Claude - Ralph Wiggum](https://awesomeclaude.ai/ralph-wiggum)
+- [frankbria/ralphy-claude-code](https://github.com/frankbria/ralphy-claude-code)
+- [ghuntley/how-to-ralphy-wiggum](https://github.com/ghuntley/how-to-ralphy-wiggum)
+- [Awesome Claude - Ralphy](https://awesomeclaude.ai/ralphy-wiggum)
 
 ### Articles et Analyses
-- [VentureBeat - How Ralph Wiggum went from The Simpsons to AI](https://venturebeat.com/technology/how-ralph-wiggum-went-from-the-simpsons-to-the-biggest-name-in-ai-right-now)
-- [Dev Genius - Ralph Wiggum Explained](https://blog.devgenius.io/ralph-wiggum-explained-the-claude-code-loop-that-keeps-going-3250dcc30809)
-- [Dev Interrupted - Inventing the Ralph Wiggum Loop](https://devinterrupted.substack.com/p/inventing-the-ralph-wiggum-loop-creator)
-- [HumanLayer Blog - A Brief History of Ralph](https://www.humanlayer.dev/blog/brief-history-of-ralph)
-- [AI Hero - Tips for AI Coding with Ralph Wiggum](https://www.aihero.dev/tips-for-ai-coding-with-ralph-wiggum)
-- [AI Hero - Getting Started with Ralph](https://www.aihero.dev/getting-started-with-ralph)
+- [VentureBeat - How Ralphy went from The Simpsons to AI](https://venturebeat.com/technology/how-ralphy-wiggum-went-from-the-simpsons-to-the-biggest-name-in-ai-right-now)
+- [Dev Genius - Ralphy Explained](https://blog.devgenius.io/ralphy-wiggum-explained-the-claude-code-loop-that-keeps-going-3250dcc30809)
+- [Dev Interrupted - Inventing the Ralphy Loop](https://devinterrupted.substack.com/p/inventing-the-ralphy-wiggum-loop-creator)
+- [HumanLayer Blog - A Brief History of Ralphy](https://www.humanlayer.dev/blog/brief-history-of-ralphy)
+- [AI Hero - Tips for AI Coding with Ralphy](https://www.aihero.dev/tips-for-ai-coding-with-ralphy-wiggum)
+- [AI Hero - Getting Started with Ralphy](https://www.aihero.dev/getting-started-with-ralphy)
 
 ---
 

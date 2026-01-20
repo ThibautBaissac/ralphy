@@ -1,7 +1,7 @@
 """Agent QA - Analyse la qualité et la sécurité du code."""
 
-from ralph.agents.base import AgentResult, BaseAgent
-from ralph.claude import ClaudeResponse
+from ralphy.agents.base import AgentResult, BaseAgent
+from ralphy.claude import ClaudeResponse
 
 
 class QAAgent(BaseAgent):

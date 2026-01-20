@@ -1,4 +1,4 @@
-"""Visualisation de progression temps réel pour RalphWiggum."""
+"""Visualisation de progression temps réel pour Ralphy."""
 
 import re
 import threading
@@ -333,7 +333,7 @@ class ProgressDisplay:
 
         return Panel(
             Group(*elements),
-            title="[bold]RalphWiggum Progress[/bold]",
+            title="[bold]Ralphy Progress[/bold]",
             border_style="blue",
         )
 

@@ -25,10 +25,10 @@ dev = [
 ]
 
 [project.scripts]
-ralph = "ralph.cli:main"
+ralphy = "ralphy.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ralph"]
+packages = ["ralphy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
