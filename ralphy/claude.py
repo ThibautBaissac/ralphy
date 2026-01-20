@@ -76,37 +76,36 @@ class ClaudeRunner:
         permettant une vérification régulière de l'état d'abort.
         Intègre également le circuit breaker pour détecter les boucles infinies.
         """
-        if not self._process or not self._process.stdout:
+        # Capture une référence locale pour éviter les race conditions
+        # quand le main thread set self._process = None dans le finally
+        process = self._process
+        if not process or not process.stdout:
             return
 
-        stdout_fd = self._process.stdout.fileno()
+        stdout_fd = process.stdout.fileno()
         buffer = ""
 
         while not self._abort_event.is_set():
-            # Vérifie que le process existe toujours
-            if not self._process or not self._process.stdout:
-                break
-
-            # Utilise select avec timeout pour vérifier l'abort régulièrement
-            if sys.platform != "win32":
-                readable, _, _ = select.select([stdout_fd], [], [], ABORT_CHECK_INTERVAL)
-                if not readable:
-                    # Timeout select - vérifie si le process est terminé
-                    if self._process.poll() is not None:
-                        break
-
-                    # Vérifie l'inactivité via le circuit breaker
-                    if self.circuit_breaker:
-                        trigger = self.circuit_breaker.check_inactivity()
-                        if trigger:
-                            self._cb_triggered = True
-                            self._abort_event.set()
-                            break
-                    continue
-
-            # Lecture non-bloquante
             try:
-                chunk = self._process.stdout.read(1)
+                # Utilise select avec timeout pour vérifier l'abort régulièrement
+                if sys.platform != "win32":
+                    readable, _, _ = select.select([stdout_fd], [], [], ABORT_CHECK_INTERVAL)
+                    if not readable:
+                        # Timeout select - vérifie si le process est terminé
+                        if process.poll() is not None:
+                            break
+
+                        # Vérifie l'inactivité via le circuit breaker
+                        if self.circuit_breaker:
+                            trigger = self.circuit_breaker.check_inactivity()
+                            if trigger:
+                                self._cb_triggered = True
+                                self._abort_event.set()
+                                break
+                        continue
+
+                # Lecture non-bloquante
+                chunk = process.stdout.read(1)
                 if not chunk:
                     # EOF atteint
                     break
@@ -129,7 +128,8 @@ class ClaudeRunner:
 
                     buffer = ""
 
-            except (IOError, OSError):
+            except (IOError, OSError, ValueError):
+                # ValueError can occur if the file descriptor is closed
                 break
 
         # Flush du buffer restant

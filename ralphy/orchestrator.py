@@ -152,19 +152,18 @@ class Orchestrator:
         """Restaure le compteur de tâches depuis TASKS.md lors d'une reprise.
 
         Utilisé quand on saute la phase SPECIFICATION pour restaurer
-        le nombre total de tâches dans l'état.
+        le nombre de tâches complétées et le total dans l'état.
+        Parse TASKS.md pour compter les tâches marquées comme 'completed'.
         """
-        from ralphy.agents import SpecAgent
+        from ralphy.agents import DevAgent
 
-        agent = SpecAgent(
+        agent = DevAgent(
             project_path=self.project_path,
             config=self.config,
         )
-        tasks_count = agent.count_tasks()
-        if tasks_count > 0:
-            self.state_manager.update_tasks(
-                self.state_manager.state.tasks_completed, tasks_count
-            )
+        completed, total = agent.count_task_status()
+        if total > 0:
+            self.state_manager.update_tasks(completed, total)
 
     def _start_phase_progress(self, phase_name: str, total_tasks: int = 0) -> None:
         """Démarre l'affichage de progression pour une phase."""
@@ -337,9 +336,14 @@ class Orchestrator:
         self.logger.phase("IMPLEMENTATION")
         self._safe_transition(Phase.IMPLEMENTATION)
 
-        # Récupère le nombre total de tâches pour la progress bar
+        # Récupère le nombre de tâches pour la progress bar
+        completed_tasks = self.state_manager.state.tasks_completed
         total_tasks = self.state_manager.state.tasks_total
         self._start_phase_progress("IMPLEMENTATION", total_tasks)
+
+        # Si on reprend avec des tâches déjà complétées, met à jour l'affichage
+        if completed_tasks > 0 and self._progress_display:
+            self._progress_display.update_tasks(completed_tasks, total_tasks)
 
         try:
             agent = DevAgent(
