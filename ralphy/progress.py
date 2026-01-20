@@ -20,6 +20,7 @@ class ActivityType(Enum):
     WRITING_FILE = "writing_file"
     RUNNING_TEST = "running_test"
     RUNNING_COMMAND = "running_command"
+    TASK_START = "task_start"
     TASK_COMPLETE = "task_complete"
     READING_FILE = "reading_file"
     THINKING = "thinking"
@@ -56,11 +57,21 @@ ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
         r"bundle exec",
         r"rails \w+",
     ],
+    ActivityType.TASK_START: [
+        r"\*\*Statut\*\*:\s*in_progress",  # Détecte quand une tâche passe en in_progress
+        r"###\s*Tâche\s*([\d.]+).*\[([^\]]+)\]",
+        r"###\s*Task\s*([\d.]+).*\[([^\]]+)\]",
+        r"Working on (?:Task|Tâche)\s*([\d.]+)",
+        r"Starting (?:Task|Tâche)\s*([\d.]+)",
+        r"Implementing (?:Task|Tâche)\s*([\d.]+)",
+        r"Now (?:implementing|working on)\s*(?:Task|Tâche)\s*([\d.]+)",
+    ],
     ActivityType.TASK_COMPLETE: [
         r"\*\*Statut\*\*:\s*completed",
         r"[✓✔]\s*T(?:ask|âche)",
-        r"Task.*completed",
-        r"Tâche.*complétée",
+        r"Task\s*([\d.]+).*completed",
+        r"Tâche\s*([\d.]+).*complétée",
+        r"Completed\s*(?:Task|Tâche)\s*([\d.]+)",
         r"status.*completed",
     ],
     ActivityType.READING_FILE: [
@@ -93,12 +104,13 @@ class OutputParser:
 
     def parse(self, text: str) -> Optional[Activity]:
         """Parse le texte et retourne l'activité détectée."""
-        # Priorité: WRITING_FILE > RUNNING_TEST > RUNNING_COMMAND > TASK_COMPLETE > READING_FILE > THINKING
+        # Priorité: TASK_START/COMPLETE détectés en premier pour le logging
         priority_order = [
+            ActivityType.TASK_START,
+            ActivityType.TASK_COMPLETE,
             ActivityType.WRITING_FILE,
             ActivityType.RUNNING_TEST,
             ActivityType.RUNNING_COMMAND,
-            ActivityType.TASK_COMPLETE,
             ActivityType.READING_FILE,
             ActivityType.THINKING,
         ]
@@ -108,18 +120,25 @@ class OutputParser:
             for pattern in patterns:
                 match = pattern.search(text)
                 if match:
+                    # Extrait les groupes capturés
                     detail = match.group(1) if match.lastindex and match.lastindex >= 1 else None
+                    # Pour TASK_START, le groupe 2 contient le nom de la tâche
+                    detail2 = match.group(2) if match.lastindex and match.lastindex >= 2 else None
                     return Activity(
                         type=activity_type,
-                        description=self._get_description(activity_type, detail),
-                        detail=detail,
+                        description=self._get_description(activity_type, detail, detail2),
+                        detail=f"{detail}:{detail2}" if detail2 else detail,
                     )
 
         return None
 
-    def _get_description(self, activity_type: ActivityType, detail: Optional[str]) -> str:
+    def _get_description(
+        self, activity_type: ActivityType, detail: Optional[str], detail2: Optional[str] = None
+    ) -> str:
         """Génère une description lisible de l'activité."""
         descriptions = {
+            ActivityType.TASK_START: f"Task {detail}: {detail2}" if detail2 else f"Starting task {detail}" if detail else "Starting task",
+            ActivityType.TASK_COMPLETE: f"Completed task {detail}" if detail else "Task completed",
             ActivityType.WRITING_FILE: f"Writing {detail}" if detail else "Writing file",
             ActivityType.RUNNING_TEST: "Running tests",
             ActivityType.RUNNING_COMMAND: f"Running: {detail}" if detail else "Running command",
@@ -139,6 +158,8 @@ class ProgressState:
     tasks_completed: int = 0
     tasks_total: int = 0
     current_activity: Optional[Activity] = None
+    current_task_id: Optional[str] = None  # Ex: "1.9"
+    current_task_name: Optional[str] = None  # Ex: "Model - Créer modèle Team"
     last_output_lines: list[str] = field(default_factory=list)
 
 
@@ -147,13 +168,18 @@ class ProgressDisplay:
 
     MAX_OUTPUT_LINES = 3
 
-    def __init__(self, console: Optional[Console] = None):
+    def __init__(
+        self,
+        console: Optional[Console] = None,
+        on_task_event: Optional[callable] = None,
+    ):
         self.console = console or Console()
         self._lock = threading.Lock()
         self._state = ProgressState()
         self._live: Optional[Live] = None
         self._parser = OutputParser()
         self._active = False
+        self._on_task_event = on_task_event  # Callback(event_type, task_id, task_name)
 
         # Progress bars
         self._phase_progress = Progress(
@@ -270,9 +296,28 @@ class ProgressDisplay:
             if activity:
                 self._state.current_activity = activity
 
+                # Gère le début d'une tâche
+                if activity.type == ActivityType.TASK_START:
+                    # detail format: "task_id:task_name" ou juste "task_id"
+                    if activity.detail and ":" in activity.detail:
+                        parts = activity.detail.split(":", 1)
+                        self._state.current_task_id = parts[0]
+                        self._state.current_task_name = parts[1] if len(parts) > 1 else None
+                    else:
+                        self._state.current_task_id = activity.detail
+                        self._state.current_task_name = None
+                    # Callback pour logging
+                    if self._on_task_event:
+                        self._on_task_event(
+                            "start",
+                            self._state.current_task_id,
+                            self._state.current_task_name,
+                        )
+
                 # Compte les tâches complétées
-                if activity.type == ActivityType.TASK_COMPLETE:
+                elif activity.type == ActivityType.TASK_COMPLETE:
                     self._state.tasks_completed += 1
+                    completed_task_id = activity.detail or self._state.current_task_id
                     if self._tasks_task_id is not None:
                         self._tasks_progress.update(
                             self._tasks_task_id,
@@ -288,6 +333,16 @@ class ProgressDisplay:
                                 self._phase_task_id,
                                 completed=self._state.phase_progress,
                             )
+                    # Callback pour logging
+                    if self._on_task_event:
+                        self._on_task_event(
+                            "complete",
+                            completed_task_id,
+                            self._state.current_task_name,
+                        )
+                    # Reset current task
+                    self._state.current_task_id = None
+                    self._state.current_task_name = None
 
             # Garde les dernières lignes d'output
             lines = text.strip().split("\n")

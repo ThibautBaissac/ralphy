@@ -117,3 +117,48 @@ class TestDevAgent:
         completed, total = agent.count_task_status()
         assert completed == 1
         assert total == 2
+
+    def test_count_task_status_with_triple_hash(self, temp_project):
+        """Test du comptage avec format ### Tâche (généré par spec-agent)."""
+        (temp_project / "specs" / "TASKS.md").write_text("""# Tâches
+### Tâche 1.1: [Migration - Setup]
+- **Statut**: completed
+
+### Tâche 1.2: [Model - User]
+- **Statut**: in_progress
+
+### Tâche 1.3: [Controller - Users]
+- **Statut**: pending
+""")
+        config = ProjectConfig()
+        agent = DevAgent(temp_project, config)
+
+        completed, total = agent.count_task_status()
+        assert total == 3
+        assert completed == 1
+
+    def test_get_in_progress_task(self, temp_project):
+        """Test de la détection d'une tâche in_progress."""
+        (temp_project / "specs" / "TASKS.md").write_text("""# Tâches
+### Tâche 1.1: [Migration - Setup]
+- **Statut**: completed
+
+### Tâche 1.2: [Model - User]
+- **Statut**: in_progress
+
+### Tâche 1.3: [Controller - Users]
+- **Statut**: pending
+""")
+        config = ProjectConfig()
+        agent = DevAgent(temp_project, config)
+
+        in_progress = agent.get_in_progress_task()
+        assert in_progress == "1.2"
+
+    def test_get_in_progress_task_none(self, temp_project):
+        """Test quand aucune tâche n'est in_progress."""
+        config = ProjectConfig()
+        agent = DevAgent(temp_project, config)
+
+        in_progress = agent.get_in_progress_task()
+        assert in_progress is None

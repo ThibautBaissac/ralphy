@@ -64,10 +64,26 @@ class DevAgent(BaseAgent):
         if not tasks_content:
             return 0, 0
 
-        total = tasks_content.count("## Tâche")
+        # Compte le total de tâches (format: ### Tâche X.Y ou ## Tâche X)
+        total = len(re.findall(r"#{2,3}\s*Tâche\s*[\d.]+", tasks_content))
+        # Compte les tâches complétées
         completed = len(re.findall(r"\*\*Statut\*\*:\s*completed", tasks_content, re.IGNORECASE))
 
         return completed, total
+
+    def get_in_progress_task(self) -> str | None:
+        """Retourne l'ID de la tâche en cours (in_progress) s'il y en a une."""
+        tasks_content = self.read_file("specs/TASKS.md")
+        if not tasks_content:
+            return None
+
+        # Cherche une tâche avec statut in_progress
+        # Format: ### Tâche 1.9: [Titre]\n- **Statut**: in_progress
+        pattern = r"#{2,3}\s*Tâche\s*([\d.]+)[^\n]*\n[^#]*\*\*Statut\*\*:\s*in_progress"
+        match = re.search(pattern, tasks_content, re.IGNORECASE)
+        if match:
+            return match.group(1)
+        return None
 
     def _detect_generated_files(self) -> list[str]:
         """Détecte les fichiers générés dans src/ et tests/."""

@@ -70,6 +70,24 @@ class Logger:
         """Log un fichier généré."""
         self._log(f"  - {filepath}", style="green")
 
+    def task_start(self, task_description: str) -> None:
+        """Log le début d'une tâche (affiché même en mode live)."""
+        text = Text()
+        text.append(self._timestamp(), style="dim")
+        text.append(" ")
+        text.append("▶ ", style="blue bold")
+        text.append(task_description, style="blue")
+        self.console.print(text)
+
+    def task_complete(self, task_description: str) -> None:
+        """Log la fin d'une tâche (affiché même en mode live)."""
+        text = Text()
+        text.append(self._timestamp(), style="dim")
+        text.append(" ")
+        text.append("✓ ", style="green bold")
+        text.append(task_description, style="green")
+        self.console.print(text)
+
     def stream(self, text: str) -> None:
         """Stream du texte sans newline (pour output agent)."""
         if self._live_mode:

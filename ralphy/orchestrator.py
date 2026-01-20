@@ -45,7 +45,7 @@ class Orchestrator:
 
         # Configure output callback
         if show_progress:
-            self._progress_display = ProgressDisplay()
+            self._progress_display = ProgressDisplay(on_task_event=self._on_task_event)
             self.on_output = self._progress_output
         else:
             self.on_output = on_output or self._default_output
@@ -60,6 +60,23 @@ class Orchestrator:
             self._progress_display.process_output(text)
         if self._user_output:
             self._user_output(text)
+
+    def _on_task_event(
+        self, event_type: str, task_id: str | None, task_name: str | None
+    ) -> None:
+        """Callback appelé lors des événements de tâche (start/complete)."""
+        if event_type == "start":
+            if task_name:
+                self.logger.task_start(f"Tâche {task_id}: {task_name}")
+            elif task_id:
+                self.logger.task_start(f"Tâche {task_id}")
+        elif event_type == "complete":
+            if task_name:
+                self.logger.task_complete(f"Tâche {task_id}: {task_name}")
+            elif task_id:
+                self.logger.task_complete(f"Tâche {task_id}")
+            else:
+                self.logger.task_complete("Tâche complétée")
 
     def _spec_artifacts_valid(self) -> bool:
         """Vérifie si les artéfacts de la phase SPECIFICATION sont valides.
