@@ -142,7 +142,6 @@ class OutputParser:
             ActivityType.WRITING_FILE: f"Writing {detail}" if detail else "Writing file",
             ActivityType.RUNNING_TEST: "Running tests",
             ActivityType.RUNNING_COMMAND: f"Running: {detail}" if detail else "Running command",
-            ActivityType.TASK_COMPLETE: "Task completed",
             ActivityType.READING_FILE: f"Reading {detail}" if detail else "Reading file",
             ActivityType.THINKING: "Analyzing...",
         }

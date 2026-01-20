@@ -68,24 +68,6 @@ class BaseAgent(ABC):
             return filepath.read_text(encoding="utf-8")
         return None
 
-    def _should_retry(self, response: ClaudeResponse) -> bool:
-        """Détermine si un retry est justifié.
-
-        Retry sur:
-        - Timeout
-        - Code retour non-zéro (erreur Claude)
-        - Circuit breaker triggered
-
-        Pas de retry si:
-        - EXIT_SIGNAL manquant (c'est un problème de prompt/agent, pas transitoire)
-        - Succès
-        """
-        return (
-            response.timed_out
-            or response.return_code != 0
-            or response.circuit_breaker_triggered
-        )
-
     def run(
         self, timeout: Optional[int] = None, phase: Optional[Phase] = None
     ) -> AgentResult:

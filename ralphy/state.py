@@ -109,8 +109,19 @@ class StateManager:
     """Gestionnaire d'état du workflow."""
 
     def __init__(self, project_path: Path):
-        self.project_path = project_path
-        self.state_file = project_path / ".ralphy" / "state.json"
+        # Resolve to canonical path (follow symlinks, normalize)
+        self.project_path = project_path.resolve()
+
+        # Verify it's a directory
+        if not self.project_path.is_dir():
+            raise ValueError(f"Project path must be an existing directory: {project_path}")
+
+        # Prevent symlink attacks on .ralphy directory
+        ralphy_dir = self.project_path / ".ralphy"
+        if ralphy_dir.exists() and ralphy_dir.is_symlink():
+            raise ValueError(".ralphy directory is a symlink - potential security risk")
+
+        self.state_file = self.project_path / ".ralphy" / "state.json"
         self._state: Optional[WorkflowState] = None
 
     @property
@@ -138,10 +149,26 @@ class StateManager:
             return WorkflowState()
 
     def save(self) -> None:
-        """Sauvegarde l'état dans le fichier."""
+        """Sauvegarde l'état dans le fichier avec garantie d'atomicité.
+
+        Utilise un fichier temporaire + rename pour éviter la corruption
+        en cas de crash pendant l'écriture.
+        """
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.state_file, "w", encoding="utf-8") as f:
-            json.dump(self.state.to_dict(), f, indent=2)
+
+        # Write to temporary file first
+        temp_file = self.state_file.with_suffix(".json.tmp")
+        try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(self.state.to_dict(), f, indent=2)
+
+            # Atomic rename (atomic on POSIX filesystems)
+            temp_file.replace(self.state_file)
+        except Exception:
+            # Clean up temp file on failure
+            if temp_file.exists():
+                temp_file.unlink(missing_ok=True)
+            raise
 
     def can_transition(self, new_phase: Phase) -> bool:
         """Vérifie si la transition vers la nouvelle phase est valide."""

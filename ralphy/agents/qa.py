@@ -1,5 +1,7 @@
 """Agent QA - Analyse la qualité et la sécurité du code."""
 
+import re
+
 from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.claude import ClaudeResponse
 
@@ -54,7 +56,6 @@ class QAAgent(BaseAgent):
         # Extraction basique du score
         score = "N/A"
         if "Score:" in content or "score:" in content:
-            import re
             match = re.search(r"[Ss]core[:\s]+(\d+)/10", content)
             if match:
                 score = f"{match.group(1)}/10"

@@ -14,6 +14,7 @@ authors = [
 ]
 dependencies = [
     "click>=8.1.0",
+    "psutil>=5.9.0",
     "pyyaml>=6.0",
     "rich>=13.0.0",
 ]
@@ -22,6 +23,7 @@ dependencies = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
 ]
 
 [project.scripts]

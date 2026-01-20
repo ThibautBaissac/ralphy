@@ -39,7 +39,6 @@ class Orchestrator:
         self.validator = HumanValidator()
         self.logger = get_logger()
         self._aborted = False
-        self._qa_agent: Optional[QAAgent] = None
         self._show_progress = show_progress
         self._progress_display: Optional[ProgressDisplay] = None
 
@@ -100,6 +99,33 @@ class Orchestrator:
         """
         qa_path = self.project_path / "specs" / "QA_REPORT.md"
         return qa_path.exists() and qa_path.stat().st_size > 500
+
+    def _get_qa_report_summary(self) -> dict:
+        """Extract QA summary directly from QA_REPORT.md file.
+
+        This decouples the validation phase from the QAAgent instance,
+        allowing workflow resume from AWAITING_QA_VALIDATION phase.
+        """
+        import re
+
+        qa_path = self.project_path / "specs" / "QA_REPORT.md"
+        if not qa_path.exists():
+            return {"score": "N/A", "critical_issues": 0}
+
+        content = qa_path.read_text(encoding="utf-8")
+
+        # Extract score
+        score = "N/A"
+        match = re.search(r"[Ss]core[:\s]+(\d+)/10", content)
+        if match:
+            score = f"{match.group(1)}/10"
+
+        # Count critical issues
+        critical_count = content.lower().count("critique") + content.lower().count(
+            "critical"
+        )
+
+        return {"score": score, "critical_issues": critical_count}
 
     def _determine_resume_phase(self) -> Optional[Phase]:
         """Détermine la phase depuis laquelle reprendre le workflow.
@@ -395,14 +421,14 @@ class Orchestrator:
         self._start_phase_progress("QA")
 
         try:
-            self._qa_agent = QAAgent(
+            agent = QAAgent(
                 project_path=self.project_path,
                 config=self.config,
                 on_output=self.on_output,
                 model=self.config.models.qa,
             )
 
-            result = self._qa_agent.run(timeout=self.config.timeouts.qa)
+            result = agent.run(timeout=self.config.timeouts.qa)
 
             if not result.success:
                 self.state_manager.set_failed(result.error_message)
@@ -416,16 +442,8 @@ class Orchestrator:
         """Demande la validation du rapport QA."""
         self._safe_transition(Phase.AWAITING_QA_VALIDATION)
 
-        # Réutilise l'instance QAAgent créée dans _run_qa_phase()
-        if self._qa_agent is None:
-            # Fallback si appelé hors séquence normale (ne devrait pas arriver)
-            self._qa_agent = QAAgent(
-                project_path=self.project_path,
-                config=self.config,
-                model=self.config.models.qa,
-            )
-
-        qa_summary = self._qa_agent.get_report_summary()
+        # Read summary directly from file to support workflow resume
+        qa_summary = self._get_qa_report_summary()
 
         validation = self.validator.request_qa_validation(
             self.project_path,

@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
+import psutil
+
 from ralphy.logger import get_logger
 
 if TYPE_CHECKING:
@@ -164,6 +166,10 @@ class ClaudeRunner:
         self._abort_event.clear()
         self._cb_triggered = False
 
+        # Initialize thread references for finally block
+        reader_thread = None
+        cb_monitor_thread = None
+
         cmd = [
             "claude",
             "--print",
@@ -228,14 +234,6 @@ class ClaudeRunner:
                 self._process.kill()
                 logger.error(f"Claude timeout après {self.timeout}s")
 
-            # Signal à la thread de lecture de s'arrêter
-            self._abort_event.set()
-            reader_thread.join(timeout=2)
-
-            # Attend la fin du thread de monitoring CB
-            if cb_monitor_thread and cb_monitor_thread.is_alive():
-                cb_monitor_thread.join(timeout=1)
-
             return_code = self._process.returncode if self._process.returncode is not None else -1
             full_output = "".join(output_lines)
             exit_signal = EXIT_SIGNAL in full_output
@@ -265,7 +263,14 @@ class ClaudeRunner:
                 timed_out=False,
             )
         finally:
-            self._abort_event.set()  # S'assure que la thread se termine
+            # Signal threads to stop first
+            self._abort_event.set()
+            # Wait for reader thread to finish BEFORE clearing process reference
+            # This prevents ValueError when reading from closed file descriptor
+            if reader_thread and reader_thread.is_alive():
+                reader_thread.join(timeout=2)
+            if cb_monitor_thread and cb_monitor_thread.is_alive():
+                cb_monitor_thread.join(timeout=1)
             self._clear_pid()
             self._process = None
 
@@ -279,6 +284,9 @@ class ClaudeRunner:
 def abort_running_claude(project_path: Path) -> bool:
     """Abort un process Claude en cours depuis le fichier PID.
 
+    Vérifie que le processus est bien un processus Claude avant de le tuer
+    pour éviter de tuer un processus non lié si le PID a été recyclé.
+
     Returns True si un process a été tué, False sinon.
     """
     logger = get_logger()
@@ -289,11 +297,26 @@ def abort_running_claude(project_path: Path) -> bool:
 
     try:
         pid = int(pid_file.read_text().strip())
+
+        # Verify process exists and is actually Claude
+        try:
+            process = psutil.Process(pid)
+            process_name = process.name().lower()
+            # Check if process name contains "claude" or "node" (claude runs via node)
+            if "claude" not in process_name and "node" not in process_name:
+                logger.warn(f"PID {pid} is not a Claude process ({process_name}), skipping kill")
+                pid_file.unlink()
+                return False
+        except psutil.NoSuchProcess:
+            logger.warn(f"Process {pid} no longer exists")
+            pid_file.unlink()
+            return False
+
         os.kill(pid, signal.SIGTERM)
         logger.info(f"Process Claude (PID {pid}) interrompu")
         pid_file.unlink()
         return True
-    except (ValueError, ProcessLookupError, PermissionError) as e:
+    except (ValueError, PermissionError) as e:
         logger.warn(f"Impossible d'interrompre le process: {e}")
         if pid_file.exists():
             pid_file.unlink()

@@ -57,17 +57,17 @@ class SpecAgent(BaseAgent):
                 error_message=f"Fichiers manquants: {', '.join(missing)}",
             )
 
-        # Si les deux fichiers existent avec du contenu, c'est un succès
-        # (même si EXIT_SIGNAL n'a pas été émis)
+        # Success requires both EXIT_SIGNAL and valid files
+        # This ensures protocol consistency with other agents
         spec_has_content = spec_path.stat().st_size > 1000
         tasks_has_content = tasks_path.stat().st_size > 500
         files_valid = spec_has_content and tasks_has_content
 
         return AgentResult(
-            success=response.exit_signal or files_valid,
+            success=response.exit_signal and files_valid,
             output=response.output,
             files_generated=files_generated,
-            error_message=None,
+            error_message=None if response.exit_signal else "EXIT_SIGNAL non reçu",
         )
 
     def count_tasks(self) -> int:

@@ -6,6 +6,34 @@ from typing import Optional
 
 import yaml
 
+from ralphy.logger import get_logger
+
+# Whitelist of allowed model names to prevent command injection
+ALLOWED_MODELS = frozenset({
+    "sonnet",
+    "opus",
+    "haiku",
+    "claude-sonnet-4-5-20250929",
+    "claude-opus-4-5-20251101",
+    "claude-haiku-4-5-20251001",
+})
+
+
+def validate_model(model: str) -> str:
+    """Validate and return model name, or default to sonnet.
+
+    Args:
+        model: The model name from config
+
+    Returns:
+        The validated model name, or 'sonnet' if invalid
+    """
+    if model in ALLOWED_MODELS:
+        return model
+    logger = get_logger()
+    logger.warn(f"Invalid model '{model}' - falling back to 'sonnet'")
+    return "sonnet"
+
 
 @dataclass
 class TimeoutConfig:
@@ -107,10 +135,10 @@ class ProjectConfig:
         )
 
         models = ModelConfig(
-            specification=models_data.get("specification", "sonnet"),
-            implementation=models_data.get("implementation", "sonnet"),
-            qa=models_data.get("qa", "sonnet"),
-            pr=models_data.get("pr", "sonnet"),
+            specification=validate_model(models_data.get("specification", "sonnet")),
+            implementation=validate_model(models_data.get("implementation", "sonnet")),
+            qa=validate_model(models_data.get("qa", "sonnet")),
+            pr=validate_model(models_data.get("pr", "sonnet")),
         )
 
         stack = StackConfig(
