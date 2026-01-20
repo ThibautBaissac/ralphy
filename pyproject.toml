@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ralphwiggum"
+version = "0.1.0"
+description = "Outil d'aide au développement de code par IA basé sur Claude Code"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Thibaut Baissac" }
+]
+dependencies = [
+    "click>=8.1.0",
+    "pyyaml>=6.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+ralph = "ralph.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ralph"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
