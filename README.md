@@ -6,7 +6,32 @@ Ralphy transforme un PRD (Product Requirements Document) en Pull Request mergeab
 
 ## Installation
 
+### Option recommandée : pipx
+
 ```bash
+# Installer pipx si nécessaire
+brew install pipx
+pipx ensurepath
+
+# Installer Ralphy
+pipx install -e /chemin/vers/Ralphy/
+```
+
+### Option alternative : uv (ultra-rapide)
+
+```bash
+# Installer uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Installer Ralphy
+uv tool install -e /chemin/vers/Ralphy/
+```
+
+### Pour le développement
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
@@ -100,6 +125,12 @@ Créer `.ralphy/config.yaml` pour personnaliser (optionnel) :
 ```yaml
 project:
   name: mon-projet
+
+models:
+  specification: sonnet     # ou opus, haiku
+  implementation: opus      # modèle le plus puissant pour l'implémentation
+  qa: sonnet
+  pr: haiku                 # modèle rapide pour la création de PR
 
 stack:
   language: python          # ou typescript, go, rust...

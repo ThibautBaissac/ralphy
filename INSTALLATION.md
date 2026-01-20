@@ -17,19 +17,64 @@ gh auth status
 
 ## 2. Installation
 
-```bash
-# Option A: Installation globale depuis le repo Ralphy
-pip install -e /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+### Option A: Installation avec pipx (recommandé pour CLI)
 
-# Option B: Installation dans un virtualenv
+`pipx` installe les outils CLI Python dans des environnements isolés :
+
+```bash
+# Installer pipx si nécessaire
+brew install pipx
+pipx ensurepath
+
+# Installer Ralphy depuis le repo local
 cd /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+pipx install -e .
+
+# Ou depuis un chemin absolu
+pipx install -e /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+```
+
+### Option B: Installation avec uv (le plus rapide)
+
+`uv` est un gestionnaire de paquets Python ultra-rapide :
+
+```bash
+# Installer uv si nécessaire
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Installer Ralphy
+uv tool install -e /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+```
+
+### Option C: Installation en développement (pour contribuer)
+
+Créez un virtualenv pour développer sur Ralphy :
+
+```bash
+cd /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+
+# Créer et activer le virtualenv
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Installer en mode éditable avec dépendances de dev
 pip install -e ".[dev]"
 ```
 
-Vérifiez l'installation :
+### Vérification de l'installation
 
 ```bash
 ralphy --version
+```
+
+### Désinstallation
+
+```bash
+# Si installé avec pipx
+pipx uninstall ralphwiggum
+
+# Si installé avec uv
+uv tool uninstall ralphwiggum
 ```
 
 ## 3. Préparer votre projet
@@ -74,6 +119,12 @@ Créez `.ralphy/config.yaml` pour personnaliser :
 ```yaml
 project:
   name: mon-projet
+
+models:
+  specification: sonnet     # ou opus, haiku
+  implementation: opus      # modèle le plus puissant pour l'implémentation
+  qa: sonnet
+  pr: haiku                 # modèle rapide pour la création de PR
 
 stack:
   language: ruby           # ou typescript, python, go...
@@ -196,6 +247,21 @@ ralphy start .
 ```
 
 ## 10. Dépannage
+
+### Erreur "externally-managed-environment"
+
+Si vous voyez cette erreur avec `pip3 install`, c'est normal sur macOS avec Python Homebrew. **Utilisez pipx ou uv** (voir section Installation ci-dessus).
+
+```bash
+# ❌ Ne fonctionne pas (erreur externally-managed-environment)
+pip3 install -e .
+
+# ✅ Utilisez pipx
+pipx install -e /chemin/vers/Ralphy/
+
+# ✅ Ou uv
+uv tool install -e /chemin/vers/Ralphy/
+```
 
 ### Le workflow est bloqué
 
