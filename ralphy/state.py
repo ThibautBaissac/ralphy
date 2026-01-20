@@ -33,8 +33,17 @@ class Status(str, Enum):
 
 
 # Transitions valides entre phases
+# Note: IDLE peut transitionner vers toutes les phases actives pour supporter
+# la reprise du workflow après une interruption (FAILED -> IDLE -> phase suivante)
 VALID_TRANSITIONS: dict[Phase, list[Phase]] = {
-    Phase.IDLE: [Phase.SPECIFICATION],
+    Phase.IDLE: [
+        Phase.SPECIFICATION,
+        Phase.AWAITING_SPEC_VALIDATION,
+        Phase.IMPLEMENTATION,
+        Phase.QA,
+        Phase.AWAITING_QA_VALIDATION,
+        Phase.PR,
+    ],
     Phase.SPECIFICATION: [Phase.AWAITING_SPEC_VALIDATION, Phase.FAILED],
     Phase.AWAITING_SPEC_VALIDATION: [Phase.IMPLEMENTATION, Phase.REJECTED],
     Phase.IMPLEMENTATION: [Phase.QA, Phase.FAILED],
@@ -61,6 +70,8 @@ class WorkflowState:
     circuit_breaker_state: str = "closed"
     circuit_breaker_attempts: int = 0
     circuit_breaker_last_trigger: Optional[str] = None
+    # Resume support: tracks the last successfully completed phase
+    last_completed_phase: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkflowState":
@@ -75,6 +86,7 @@ class WorkflowState:
             circuit_breaker_state=data.get("circuit_breaker_state", "closed"),
             circuit_breaker_attempts=data.get("circuit_breaker_attempts", 0),
             circuit_breaker_last_trigger=data.get("circuit_breaker_last_trigger"),
+            last_completed_phase=data.get("last_completed_phase"),
         )
 
     def to_dict(self) -> dict:
@@ -89,6 +101,7 @@ class WorkflowState:
             "circuit_breaker_state": self.circuit_breaker_state,
             "circuit_breaker_attempts": self.circuit_breaker_attempts,
             "circuit_breaker_last_trigger": self.circuit_breaker_last_trigger,
+            "last_completed_phase": self.last_completed_phase,
         }
 
 
@@ -172,6 +185,15 @@ class StateManager:
         """Met à jour le compteur de tâches."""
         self.state.tasks_completed = completed
         self.state.tasks_total = total
+        self.save()
+
+    def mark_phase_completed(self, phase: Phase) -> None:
+        """Marque une phase comme complétée pour permettre la reprise.
+
+        Cette information est préservée même en cas d'échec pour permettre
+        au workflow de reprendre depuis la bonne phase.
+        """
+        self.state.last_completed_phase = phase.value
         self.save()
 
     def reset_circuit_breaker(self) -> None:

@@ -56,3 +56,136 @@ class TestOrchestrator:
         orchestrator = Orchestrator(temp_project)
         with pytest.raises(WorkflowError, match="déjà en cours"):
             orchestrator._validate_prerequisites()
+
+
+class TestResumeLogic:
+    """Tests pour la logique de reprise du workflow."""
+
+    @pytest.fixture
+    def temp_project_with_specs(self):
+        """Crée un projet temporaire avec des artéfacts de spec valides."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / "PRD.md").write_text("# Test PRD\n" + "x" * 500)
+            (project_path / ".ralphy").mkdir()
+            (project_path / "specs").mkdir()
+            # Créer des fichiers de spec suffisamment grands
+            (project_path / "specs" / "SPEC.md").write_text("# Spec\n" + "x" * 1500)
+            (project_path / "specs" / "TASKS.md").write_text("# Tasks\n" + "x" * 800)
+            yield project_path
+
+    @pytest.fixture
+    def temp_project_with_qa(self, temp_project_with_specs):
+        """Crée un projet avec artéfacts de spec et QA."""
+        (temp_project_with_specs / "specs" / "QA_REPORT.md").write_text(
+            "# QA Report\n" + "x" * 800
+        )
+        return temp_project_with_specs
+
+    def test_spec_artifacts_valid_with_valid_files(self, temp_project_with_specs):
+        """Test que _spec_artifacts_valid retourne True avec fichiers valides."""
+        orchestrator = Orchestrator(temp_project_with_specs)
+        assert orchestrator._spec_artifacts_valid() is True
+
+    def test_spec_artifacts_valid_with_missing_files(self, temp_project_with_specs):
+        """Test que _spec_artifacts_valid retourne False si fichiers manquants."""
+        (temp_project_with_specs / "specs" / "SPEC.md").unlink()
+        orchestrator = Orchestrator(temp_project_with_specs)
+        assert orchestrator._spec_artifacts_valid() is False
+
+    def test_spec_artifacts_valid_with_small_files(self, temp_project_with_specs):
+        """Test que _spec_artifacts_valid retourne False si fichiers trop petits."""
+        (temp_project_with_specs / "specs" / "SPEC.md").write_text("small")
+        orchestrator = Orchestrator(temp_project_with_specs)
+        assert orchestrator._spec_artifacts_valid() is False
+
+    def test_qa_artifacts_valid_with_valid_file(self, temp_project_with_qa):
+        """Test que _qa_artifacts_valid retourne True avec fichier valide."""
+        orchestrator = Orchestrator(temp_project_with_qa)
+        assert orchestrator._qa_artifacts_valid() is True
+
+    def test_qa_artifacts_valid_with_missing_file(self, temp_project_with_specs):
+        """Test que _qa_artifacts_valid retourne False si fichier manquant."""
+        orchestrator = Orchestrator(temp_project_with_specs)
+        assert orchestrator._qa_artifacts_valid() is False
+
+    def test_determine_resume_phase_without_last_completed(self, temp_project_with_specs):
+        """Test que _determine_resume_phase retourne None sans last_completed_phase."""
+        orchestrator = Orchestrator(temp_project_with_specs)
+        assert orchestrator._determine_resume_phase() is None
+
+    def test_determine_resume_phase_after_specification(self, temp_project_with_specs):
+        """Test de reprise après SPECIFICATION complétée."""
+        state_manager = StateManager(temp_project_with_specs)
+        state_manager.mark_phase_completed(Phase.SPECIFICATION)
+        state_manager.set_failed("Test interruption")
+
+        orchestrator = Orchestrator(temp_project_with_specs)
+        resume_phase = orchestrator._determine_resume_phase()
+        assert resume_phase == Phase.AWAITING_SPEC_VALIDATION
+
+    def test_determine_resume_phase_after_spec_validation(self, temp_project_with_specs):
+        """Test de reprise après validation SPEC complétée."""
+        state_manager = StateManager(temp_project_with_specs)
+        state_manager.mark_phase_completed(Phase.AWAITING_SPEC_VALIDATION)
+        state_manager.set_failed("Test interruption")
+
+        orchestrator = Orchestrator(temp_project_with_specs)
+        resume_phase = orchestrator._determine_resume_phase()
+        assert resume_phase == Phase.IMPLEMENTATION
+
+    def test_determine_resume_phase_after_implementation(self, temp_project_with_specs):
+        """Test de reprise après IMPLEMENTATION complétée."""
+        state_manager = StateManager(temp_project_with_specs)
+        state_manager.mark_phase_completed(Phase.IMPLEMENTATION)
+        state_manager.set_failed("Test interruption")
+
+        orchestrator = Orchestrator(temp_project_with_specs)
+        resume_phase = orchestrator._determine_resume_phase()
+        assert resume_phase == Phase.QA
+
+    def test_determine_resume_phase_after_qa(self, temp_project_with_qa):
+        """Test de reprise après QA complétée."""
+        state_manager = StateManager(temp_project_with_qa)
+        state_manager.mark_phase_completed(Phase.QA)
+        state_manager.set_failed("Test interruption")
+
+        orchestrator = Orchestrator(temp_project_with_qa)
+        resume_phase = orchestrator._determine_resume_phase()
+        assert resume_phase == Phase.AWAITING_QA_VALIDATION
+
+    def test_determine_resume_phase_with_missing_artifacts(self, temp_project_with_specs):
+        """Test que _determine_resume_phase retourne None si artéfacts manquants."""
+        state_manager = StateManager(temp_project_with_specs)
+        state_manager.mark_phase_completed(Phase.SPECIFICATION)
+        state_manager.set_failed("Test interruption")
+
+        # Supprime SPEC.md pour invalider les artéfacts
+        (temp_project_with_specs / "specs" / "SPEC.md").unlink()
+
+        orchestrator = Orchestrator(temp_project_with_specs)
+        resume_phase = orchestrator._determine_resume_phase()
+        assert resume_phase is None
+
+    def test_should_skip_phase_without_resume(self, temp_project_with_specs):
+        """Test que _should_skip_phase retourne False sans phase de reprise."""
+        orchestrator = Orchestrator(temp_project_with_specs)
+        assert orchestrator._should_skip_phase(Phase.SPECIFICATION, None) is False
+
+    def test_should_skip_phase_before_resume_point(self, temp_project_with_specs):
+        """Test que les phases avant le point de reprise sont sautées."""
+        orchestrator = Orchestrator(temp_project_with_specs)
+        # Si on reprend à IMPLEMENTATION, on doit sauter SPECIFICATION et AWAITING_SPEC_VALIDATION
+        assert orchestrator._should_skip_phase(Phase.SPECIFICATION, Phase.IMPLEMENTATION) is True
+        assert orchestrator._should_skip_phase(Phase.AWAITING_SPEC_VALIDATION, Phase.IMPLEMENTATION) is True
+        assert orchestrator._should_skip_phase(Phase.IMPLEMENTATION, Phase.IMPLEMENTATION) is False
+
+    def test_should_skip_phase_at_and_after_resume_point(self, temp_project_with_specs):
+        """Test que les phases au point de reprise et après ne sont pas sautées."""
+        orchestrator = Orchestrator(temp_project_with_specs)
+        # Si on reprend à QA, QA et phases suivantes ne sont pas sautées
+        assert orchestrator._should_skip_phase(Phase.QA, Phase.QA) is False
+        assert orchestrator._should_skip_phase(Phase.AWAITING_QA_VALIDATION, Phase.QA) is False
+        assert orchestrator._should_skip_phase(Phase.PR, Phase.QA) is False

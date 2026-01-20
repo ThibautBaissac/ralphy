@@ -33,10 +33,14 @@ def main():
 @main.command()
 @click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True))
 @click.option("--no-progress", is_flag=True, help="Désactive l'affichage de progression")
-def start(project_path: str, no_progress: bool):
+@click.option("--fresh", is_flag=True, help="Force un redémarrage complet sans reprise")
+def start(project_path: str, no_progress: bool, fresh: bool):
     """Démarre un workflow Ralphy.
 
     PROJECT_PATH: Chemin vers le projet contenant PRD.md
+
+    Par défaut, si le workflow a été interrompu, il reprendra depuis la
+    dernière phase complétée. Utilisez --fresh pour forcer un redémarrage complet.
     """
     project = Path(project_path)
     logger = get_logger()
@@ -73,7 +77,7 @@ def start(project_path: str, no_progress: bool):
     logger.newline()
 
     orchestrator = Orchestrator(project, show_progress=show_progress)
-    success = orchestrator.run()
+    success = orchestrator.run(fresh=fresh)
 
     sys.exit(0 if success else 1)
 
@@ -110,6 +114,9 @@ def status(project_path: str = None):
         progress = f"{state.tasks_completed}/{state.tasks_total}"
         table.add_row("Tâches", progress)
 
+    if state.last_completed_phase:
+        table.add_row("Dernière phase complétée", f"[cyan]{state.last_completed_phase}[/cyan]")
+
     if state.error_message:
         table.add_row("Erreur", f"[red]{state.error_message}[/red]")
 
@@ -118,9 +125,17 @@ def status(project_path: str = None):
     # Hint pour redémarrer si le workflow est terminé en échec
     if state.phase in (Phase.FAILED, Phase.REJECTED):
         console.print()
-        console.print(
-            f"[dim]💡 Pour relancer le workflow: [cyan]ralphy start {project}[/cyan][/dim]"
-        )
+        if state.last_completed_phase:
+            console.print(
+                f"[dim]💡 Pour reprendre le workflow: [cyan]ralphy start {project}[/cyan][/dim]"
+            )
+            console.print(
+                f"[dim]💡 Pour redémarrer de zéro: [cyan]ralphy start {project} --fresh[/cyan][/dim]"
+            )
+        else:
+            console.print(
+                f"[dim]💡 Pour relancer le workflow: [cyan]ralphy start {project}[/cyan][/dim]"
+            )
 
 
 @main.command()

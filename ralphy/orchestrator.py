@@ -61,6 +61,111 @@ class Orchestrator:
         if self._user_output:
             self._user_output(text)
 
+    def _spec_artifacts_valid(self) -> bool:
+        """Vérifie si les artéfacts de la phase SPECIFICATION sont valides.
+
+        Vérifie que SPEC.md et TASKS.md existent et ont une taille minimale
+        indiquant un contenu substantiel.
+        """
+        spec_path = self.project_path / "specs" / "SPEC.md"
+        tasks_path = self.project_path / "specs" / "TASKS.md"
+        return (
+            spec_path.exists()
+            and tasks_path.exists()
+            and spec_path.stat().st_size > 1000
+            and tasks_path.stat().st_size > 500
+        )
+
+    def _qa_artifacts_valid(self) -> bool:
+        """Vérifie si les artéfacts de la phase QA sont valides.
+
+        Vérifie que QA_REPORT.md existe et a une taille minimale.
+        """
+        qa_path = self.project_path / "specs" / "QA_REPORT.md"
+        return qa_path.exists() and qa_path.stat().st_size > 500
+
+    def _determine_resume_phase(self) -> Optional[Phase]:
+        """Détermine la phase depuis laquelle reprendre le workflow.
+
+        Basé sur last_completed_phase et la validation des artéfacts correspondants.
+        Retourne None si aucune reprise n'est possible (redémarrage complet).
+        """
+        last = self.state_manager.state.last_completed_phase
+        if not last:
+            return None
+
+        try:
+            completed_phase = Phase(last)
+        except ValueError:
+            return None
+
+        # Détermine la prochaine phase basée sur ce qui a été complété
+        # et valide que les artéfacts requis sont présents
+        if completed_phase == Phase.SPECIFICATION:
+            if self._spec_artifacts_valid():
+                return Phase.AWAITING_SPEC_VALIDATION
+        elif completed_phase == Phase.AWAITING_SPEC_VALIDATION:
+            if self._spec_artifacts_valid():
+                return Phase.IMPLEMENTATION
+        elif completed_phase == Phase.IMPLEMENTATION:
+            if self._spec_artifacts_valid():
+                return Phase.QA
+        elif completed_phase == Phase.QA:
+            if self._spec_artifacts_valid() and self._qa_artifacts_valid():
+                return Phase.AWAITING_QA_VALIDATION
+        elif completed_phase == Phase.AWAITING_QA_VALIDATION:
+            if self._spec_artifacts_valid() and self._qa_artifacts_valid():
+                return Phase.PR
+
+        return None
+
+    def _should_skip_phase(self, phase: Phase, resume_from: Optional[Phase]) -> bool:
+        """Détermine si une phase doit être sautée lors de la reprise.
+
+        Args:
+            phase: La phase à évaluer
+            resume_from: La phase depuis laquelle on reprend (None = pas de reprise)
+
+        Returns:
+            True si la phase doit être sautée, False sinon
+        """
+        if not resume_from:
+            return False
+
+        phase_order = [
+            Phase.SPECIFICATION,
+            Phase.AWAITING_SPEC_VALIDATION,
+            Phase.IMPLEMENTATION,
+            Phase.QA,
+            Phase.AWAITING_QA_VALIDATION,
+            Phase.PR,
+        ]
+
+        try:
+            phase_idx = phase_order.index(phase)
+            resume_idx = phase_order.index(resume_from)
+            return phase_idx < resume_idx
+        except ValueError:
+            return False
+
+    def _restore_task_count(self) -> None:
+        """Restaure le compteur de tâches depuis TASKS.md lors d'une reprise.
+
+        Utilisé quand on saute la phase SPECIFICATION pour restaurer
+        le nombre total de tâches dans l'état.
+        """
+        from ralphy.agents import SpecAgent
+
+        agent = SpecAgent(
+            project_path=self.project_path,
+            config=self.config,
+        )
+        tasks_count = agent.count_tasks()
+        if tasks_count > 0:
+            self.state_manager.update_tasks(
+                self.state_manager.state.tasks_completed, tasks_count
+            )
+
     def _start_phase_progress(self, phase_name: str, total_tasks: int = 0) -> None:
         """Démarre l'affichage de progression pour une phase."""
         if self._progress_display and self._show_progress:
@@ -73,40 +178,74 @@ class Orchestrator:
             self._progress_display.stop()
             self.logger.set_live_mode(False)
 
-    def run(self) -> bool:
-        """Exécute le workflow complet."""
+    def run(self, fresh: bool = False) -> bool:
+        """Exécute le workflow complet.
+
+        Args:
+            fresh: Si True, force un redémarrage complet sans reprise.
+        """
         try:
             self._validate_prerequisites()
             ensure_ralph_dir(self.project_path)
             ensure_specs_dir(self.project_path)
 
-            # Reset l'état si nécessaire (FAILED ou REJECTED -> IDLE)
+            # Détermine si on peut reprendre depuis une phase précédente
+            resume_phase = None
             if self.state_manager.state.phase in (Phase.FAILED, Phase.REJECTED):
+                if not fresh:
+                    resume_phase = self._determine_resume_phase()
+                    if resume_phase:
+                        self.logger.info(
+                            f"Reprise du workflow depuis: {resume_phase.value}"
+                        )
                 self._safe_transition(Phase.IDLE)
 
             # Phase 1: Specification
-            if not self._run_specification_phase():
-                return False
+            if not self._should_skip_phase(Phase.SPECIFICATION, resume_phase):
+                if not self._run_specification_phase():
+                    return False
+                self.state_manager.mark_phase_completed(Phase.SPECIFICATION)
+            else:
+                self.logger.info("Phase SPECIFICATION déjà complétée, passage à la suite")
+                self._restore_task_count()
 
             # Validation #1
-            if not self._run_spec_validation():
-                return False
+            if not self._should_skip_phase(Phase.AWAITING_SPEC_VALIDATION, resume_phase):
+                if not self._run_spec_validation():
+                    return False
+                self.state_manager.mark_phase_completed(Phase.AWAITING_SPEC_VALIDATION)
+            else:
+                self.logger.info("Validation SPEC déjà effectuée, passage à la suite")
 
             # Phase 2: Implementation
-            if not self._run_implementation_phase():
-                return False
+            if not self._should_skip_phase(Phase.IMPLEMENTATION, resume_phase):
+                if not self._run_implementation_phase():
+                    return False
+                self.state_manager.mark_phase_completed(Phase.IMPLEMENTATION)
+            else:
+                self.logger.info("Phase IMPLEMENTATION déjà complétée, passage à la suite")
 
             # Phase 3: QA
-            if not self._run_qa_phase():
-                return False
+            if not self._should_skip_phase(Phase.QA, resume_phase):
+                if not self._run_qa_phase():
+                    return False
+                self.state_manager.mark_phase_completed(Phase.QA)
+            else:
+                self.logger.info("Phase QA déjà complétée, passage à la suite")
 
             # Validation #2
-            if not self._run_qa_validation():
-                return False
+            if not self._should_skip_phase(Phase.AWAITING_QA_VALIDATION, resume_phase):
+                if not self._run_qa_validation():
+                    return False
+                self.state_manager.mark_phase_completed(Phase.AWAITING_QA_VALIDATION)
+            else:
+                self.logger.info("Validation QA déjà effectuée, passage à la suite")
 
             # Phase 4: PR
-            if not self._run_pr_phase():
-                return False
+            if not self._should_skip_phase(Phase.PR, resume_phase):
+                if not self._run_pr_phase():
+                    return False
+                self.state_manager.mark_phase_completed(Phase.PR)
 
             self._safe_transition(Phase.COMPLETED)
             self.logger.success("Workflow terminé avec succès!")
