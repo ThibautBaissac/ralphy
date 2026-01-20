@@ -83,6 +83,10 @@ class ClaudeRunner:
         buffer = ""
 
         while not self._abort_event.is_set():
+            # Vérifie que le process existe toujours
+            if not self._process or not self._process.stdout:
+                break
+
             # Utilise select avec timeout pour vérifier l'abort régulièrement
             if sys.platform != "win32":
                 readable, _, _ = select.select([stdout_fd], [], [], ABORT_CHECK_INTERVAL)

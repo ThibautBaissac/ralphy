@@ -80,6 +80,10 @@ class Orchestrator:
             ensure_ralph_dir(self.project_path)
             ensure_specs_dir(self.project_path)
 
+            # Reset l'état si nécessaire (FAILED ou REJECTED -> IDLE)
+            if self.state_manager.state.phase in (Phase.FAILED, Phase.REJECTED):
+                self._safe_transition(Phase.IDLE)
+
             # Phase 1: Specification
             if not self._run_specification_phase():
                 return False
