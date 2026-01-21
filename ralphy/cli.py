@@ -147,6 +147,90 @@ Documentation: https://github.com/your-org/ralphy#custom-prompts
 """
 
 
+def _generate_config_template() -> str:
+    """Generate config.yaml template with default values and documentation.
+
+    Returns:
+        A YAML string with all config sections, default values, and comments.
+    """
+    from ralphy.constants import (
+        SPEC_TIMEOUT_SECONDS,
+        IMPL_TIMEOUT_SECONDS,
+        QA_TIMEOUT_SECONDS,
+        PR_TIMEOUT_SECONDS,
+        AGENT_TIMEOUT_SECONDS,
+        DEFAULT_RETRY_ATTEMPTS,
+        DEFAULT_RETRY_DELAY_SECONDS,
+        CB_INACTIVITY_TIMEOUT_SECONDS,
+        CB_MAX_REPEATED_ERRORS,
+        CB_TASK_STAGNATION_TIMEOUT_SECONDS,
+        CB_MAX_OUTPUT_SIZE_BYTES,
+        CB_MAX_ATTEMPTS,
+    )
+
+    return f"""# =============================================================================
+# RALPHY CONFIGURATION
+# =============================================================================
+# This file configures Ralphy's behavior for this project.
+# All values shown are defaults. Only override what you need to change.
+#
+# Documentation: https://github.com/ThibautBaissac/Ralphy#configuration
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Project Settings
+# -----------------------------------------------------------------------------
+project:
+  name: my-project  # Project name used in agent prompts
+
+# -----------------------------------------------------------------------------
+# Model Configuration
+# -----------------------------------------------------------------------------
+# Claude model to use for each phase. Options: sonnet, opus, haiku
+# or full model names like claude-sonnet-4-5-20250929
+models:
+  specification: sonnet  # Spec generation (balanced)
+  implementation: sonnet  # Code implementation (most capable recommended)
+  qa: sonnet             # Quality analysis (balanced)
+  pr: sonnet             # PR creation (fast is fine)
+
+# -----------------------------------------------------------------------------
+# Tech Stack
+# -----------------------------------------------------------------------------
+stack:
+  language: typescript     # Primary language/framework
+  test_command: npm test   # Command to run tests
+
+# -----------------------------------------------------------------------------
+# Timeouts (seconds)
+# -----------------------------------------------------------------------------
+timeouts:
+  specification: {SPEC_TIMEOUT_SECONDS}   # 30 min - Spec generation
+  implementation: {IMPL_TIMEOUT_SECONDS}  # 4h - Code implementation
+  qa: {QA_TIMEOUT_SECONDS}              # 30 min - QA analysis
+  pr: {PR_TIMEOUT_SECONDS}               # 10 min - PR creation
+  agent: {AGENT_TIMEOUT_SECONDS}              # 5 min - Fallback timeout
+
+# -----------------------------------------------------------------------------
+# Retry Configuration
+# -----------------------------------------------------------------------------
+retry:
+  max_attempts: {DEFAULT_RETRY_ATTEMPTS}       # Total attempts (1 = no retry)
+  delay_seconds: {DEFAULT_RETRY_DELAY_SECONDS}      # Delay between retries
+
+# -----------------------------------------------------------------------------
+# Circuit Breaker - Protection against infinite loops
+# -----------------------------------------------------------------------------
+circuit_breaker:
+  enabled: true
+  inactivity_timeout: {CB_INACTIVITY_TIMEOUT_SECONDS}     # Seconds without output before warning
+  max_repeated_errors: {CB_MAX_REPEATED_ERRORS}      # Same error count before warning
+  task_stagnation_timeout: {CB_TASK_STAGNATION_TIMEOUT_SECONDS}  # Seconds without task completion (dev-agent)
+  max_output_size: {CB_MAX_OUTPUT_SIZE_BYTES}    # Max cumulative output in bytes (500KB)
+  max_attempts: {CB_MAX_ATTEMPTS}            # Warnings before circuit trips
+"""
+
+
 console = Console()
 
 
@@ -481,6 +565,48 @@ def init_prompts(project_path: str = None, force: bool = False):
         console.print()
         console.print("[dim]Edit these files to customize Ralphy for your project.[/dim]")
         console.print("[dim]Remember: prompts must contain EXIT_SIGNAL instruction.[/dim]")
+
+
+@main.command("init-config")
+@click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True), required=False)
+@click.option("--force", is_flag=True, help="Overwrite existing config file")
+def init_config(project_path: str = None, force: bool = False):
+    """Initialize a default configuration file.
+
+    Creates a .ralphy/config.yaml file with all default values and documentation
+    comments. This file can be customized to adjust timeouts, models, and other
+    settings for your project.
+
+    PROJECT_PATH: Path to the project (default: current directory)
+
+    Use --force to overwrite an existing config file.
+    """
+    project = Path(project_path) if project_path else Path.cwd()
+    logger = get_logger()
+
+    # Create .ralphy/ directory if it doesn't exist
+    ralphy_dir = project / ".ralphy"
+    ralphy_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = ralphy_dir / "config.yaml"
+
+    # Check if config already exists
+    if config_path.exists() and not force:
+        logger.warn(f"Config file already exists: {config_path}")
+        console.print("[dim]Use --force to overwrite.[/dim]")
+        return
+
+    # Generate and write config template
+    template = _generate_config_template()
+    config_path.write_text(template, encoding="utf-8")
+
+    if config_path.exists():
+        console.print(f"[green]✓[/green] Created {config_path}")
+        console.print()
+        console.print("[dim]Edit this file to customize Ralphy for your project.[/dim]")
+        console.print("[dim]Only override values you need to change.[/dim]")
+    else:
+        logger.error(f"Failed to create config file: {config_path}")
 
 
 if __name__ == "__main__":

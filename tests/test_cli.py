@@ -5,9 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from ralphy.cli import description_to_feature_name, generate_quick_prd, main
+from ralphy.config import load_config
 from ralphy.state import Phase, StateManager
 
 
@@ -355,6 +357,152 @@ class TestInitPromptsCommand:
         pr_content = (tmp_path / ".ralphy" / "prompts" / "pr_agent.md").read_text()
         assert "{{branch_name}}" in pr_content
         assert "{{qa_report}}" in pr_content
+
+
+class TestInitConfigCommand:
+    """Tests for the init-config command."""
+
+    def test_init_config_creates_directory(self, runner, tmp_path):
+        """Test that init-config creates .ralphy/ directory."""
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        ralphy_dir = tmp_path / ".ralphy"
+        assert ralphy_dir.exists()
+        assert ralphy_dir.is_dir()
+
+    def test_init_config_creates_config_file(self, runner, tmp_path):
+        """Test that init-config creates config.yaml file."""
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        config_path = tmp_path / ".ralphy" / "config.yaml"
+        assert config_path.exists()
+        assert "Created" in result.output
+
+    def test_init_config_contains_all_sections(self, runner, tmp_path):
+        """Test that init-config creates config with all required sections."""
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        content = (tmp_path / ".ralphy" / "config.yaml").read_text()
+
+        # Check all major sections are present
+        assert "project:" in content
+        assert "models:" in content
+        assert "stack:" in content
+        assert "timeouts:" in content
+        assert "retry:" in content
+        assert "circuit_breaker:" in content
+
+    def test_init_config_does_not_overwrite_without_force(self, runner, tmp_path):
+        """Test that init-config doesn't overwrite existing file without --force."""
+        # Create existing config
+        ralphy_dir = tmp_path / ".ralphy"
+        ralphy_dir.mkdir(parents=True)
+        config_path = ralphy_dir / "config.yaml"
+        original_content = "# My custom config\nproject:\n  name: custom"
+        config_path.write_text(original_content)
+
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        # Original content should be preserved
+        assert config_path.read_text() == original_content
+        assert "already exists" in result.output.lower()
+        assert "--force" in result.output
+
+    def test_init_config_force_overwrites(self, runner, tmp_path):
+        """Test that init-config --force overwrites existing file."""
+        # Create existing config
+        ralphy_dir = tmp_path / ".ralphy"
+        ralphy_dir.mkdir(parents=True)
+        config_path = ralphy_dir / "config.yaml"
+        original_content = "# My custom config that will be overwritten"
+        config_path.write_text(original_content)
+
+        result = runner.invoke(main, ["init-config", "--force", str(tmp_path)])
+        assert result.exit_code == 0
+
+        # Config should be overwritten
+        new_content = config_path.read_text()
+        assert new_content != original_content
+        assert "RALPHY CONFIGURATION" in new_content
+
+    def test_init_config_default_path(self, runner, tmp_path, monkeypatch):
+        """Test that init-config uses current directory if no path given."""
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(main, ["init-config"])
+        assert result.exit_code == 0
+
+        config_path = tmp_path / ".ralphy" / "config.yaml"
+        assert config_path.exists()
+
+    def test_init_config_has_comments(self, runner, tmp_path):
+        """Test that init-config creates config with documentation comments."""
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        content = (tmp_path / ".ralphy" / "config.yaml").read_text()
+
+        # Should have header comments
+        assert "RALPHY CONFIGURATION" in content
+        # Should have section comments
+        assert "Project Settings" in content
+        assert "Model Configuration" in content
+        assert "Timeouts" in content
+        assert "Circuit Breaker" in content
+        # Should have inline value comments
+        assert "# 30 min" in content or "30 min" in content
+
+    def test_init_config_is_valid_yaml(self, runner, tmp_path):
+        """Test that generated config is valid YAML."""
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        config_path = tmp_path / ".ralphy" / "config.yaml"
+        content = config_path.read_text()
+
+        # Should parse without errors
+        parsed = yaml.safe_load(content)
+        assert parsed is not None
+        assert isinstance(parsed, dict)
+
+    def test_init_config_loads_correctly(self, runner, tmp_path):
+        """Test that generated config loads correctly with load_config."""
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        # load_config should work without errors
+        config = load_config(tmp_path)
+        assert config is not None
+
+        # Check some default values are set correctly
+        assert config.name == "my-project"
+        assert config.models.specification == "sonnet"
+        assert config.stack.language == "typescript"
+
+    def test_init_config_uses_constant_values(self, runner, tmp_path):
+        """Test that generated config uses actual values from constants."""
+        from ralphy.constants import (
+            SPEC_TIMEOUT_SECONDS,
+            IMPL_TIMEOUT_SECONDS,
+            CB_INACTIVITY_TIMEOUT_SECONDS,
+            CB_MAX_ATTEMPTS,
+        )
+
+        result = runner.invoke(main, ["init-config", str(tmp_path)])
+        assert result.exit_code == 0
+
+        config_path = tmp_path / ".ralphy" / "config.yaml"
+        parsed = yaml.safe_load(config_path.read_text())
+
+        # Verify values match constants
+        assert parsed["timeouts"]["specification"] == SPEC_TIMEOUT_SECONDS
+        assert parsed["timeouts"]["implementation"] == IMPL_TIMEOUT_SECONDS
+        assert parsed["circuit_breaker"]["inactivity_timeout"] == CB_INACTIVITY_TIMEOUT_SECONDS
+        assert parsed["circuit_breaker"]["max_attempts"] == CB_MAX_ATTEMPTS
 
 
 class TestDescriptionToFeatureName:
