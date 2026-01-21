@@ -1,133 +1,151 @@
-# Intégrer Ralphy dans un projet existant
+# Integrating Ralphy into an existing project
 
-## 1. Prérequis
+## 1. Prerequisites
 
-Vérifiez que vous avez :
+Verify you have:
 
 ```bash
-# Claude Code CLI installé et authentifié
+# Claude Code CLI installed and authenticated
 claude --version
 
-# Git configuré
+# Git configured
 git --version
 
-# GitHub CLI authentifié (pour créer les PR)
+# GitHub CLI authenticated (for PR creation)
 gh auth status
 ```
 
 ## 2. Installation
 
-### Option A: Installation avec pipx (recommandé pour CLI)
+### Option A: Install with pipx (recommended for CLI)
 
-`pipx` installe les outils CLI Python dans des environnements isolés :
+`pipx` installs Python CLI tools in isolated environments:
 
 ```bash
-# Installer pipx si nécessaire
+# Install pipx if needed
 brew install pipx
 pipx ensurepath
 
-# Installer Ralphy depuis le repo local
-cd /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+# Install Ralphy from local repo
+cd /path/to/Ralphy/
 pipx install -e .
 
-# Ou depuis un chemin absolu
-pipx install -e /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+# Or from an absolute path
+pipx install -e /path/to/Ralphy/
 ```
 
-### Option B: Installation avec uv (le plus rapide)
+### Option B: Install with uv (fastest)
 
-`uv` est un gestionnaire de paquets Python ultra-rapide :
+`uv` is an ultra-fast Python package manager:
 
 ```bash
-# Installer uv si nécessaire
+# Install uv if needed
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Installer Ralphy
-uv tool install -e /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+# Install Ralphy
+uv tool install -e /path/to/Ralphy/
 ```
 
-### Option C: Installation en développement (pour contribuer)
+### Option C: Development installation (for contributors)
 
-Créez un virtualenv pour développer sur Ralphy :
+Create a virtualenv to develop on Ralphy:
 
 ```bash
-cd /Users/thibautbaissac/code/ThibautBaissac/Ralphy/
+cd /path/to/Ralphy/
 
-# Créer et activer le virtualenv
+# Create and activate virtualenv
 python3 -m venv .venv
 source .venv/bin/activate
 
-# Installer en mode éditable avec dépendances de dev
+# Install in editable mode with dev dependencies
 pip install -e ".[dev]"
 ```
 
-### Vérification de l'installation
+### Verify installation
 
 ```bash
 ralphy --version
 ```
 
-### Désinstallation
+### Uninstall
 
 ```bash
-# Si installé avec pipx
+# If installed with pipx
 pipx uninstall ralphwiggum
 
-# Si installé avec uv
+# If installed with uv
 uv tool uninstall ralphwiggum
 ```
 
-## 3. Préparer votre projet
+## 3. Two ways to use Ralphy
 
-### 3.1 Créer le PRD.md (obligatoire)
+### Option 1: Quick Start (fastest)
 
-À la racine de votre projet existant :
+Launch directly with a feature description:
 
 ```bash
-cd /path/to/mon-projet-existant
+cd /path/to/my-existing-project
+ralphy start "Add a push notification system"
 ```
 
-Créez `PRD.md` :
+Ralphy will automatically:
+1. Create a feature name: `add-a-push-notification-system`
+2. Create `docs/features/<feature>/PRD.md` with a minimal PRD
+3. Launch the complete workflow
+
+### Option 2: Manual PRD (more control)
+
+#### 3.1 Create the feature structure
+
+```bash
+cd /path/to/my-existing-project
+mkdir -p docs/features/push-notifications
+```
+
+#### 3.2 Create the PRD.md
+
+Create `docs/features/push-notifications/PRD.md`:
 
 ```markdown
-# Titre de la Feature
+# Push Notification System
 
-## Contexte
-[Décrivez le contexte existant du projet et pourquoi cette feature est nécessaire]
+## Context
+Existing Rails 8 application. Users need to be notified
+in real-time of important actions (orders, messages, etc.).
 
-## Objectif
-[Ce que vous voulez accomplir]
+## Objective
+Implement a push notification system via WebSockets.
 
-## Fonctionnalités
-- Feature 1 : description détaillée
-- Feature 2 : description détaillée
+## Features
+- Notification service with ActionCable
+- React component to display notifications
+- REST API to mark as read
+- Database persistence (notifications table)
 
-## Contraintes
-- Stack existante : Rails 8 / React / etc.
-- Dépendances existantes à respecter
-- Conventions de code du projet
-- Tests requis (RSpec, Jest, etc.)
-
-## Exemples d'usage
-[Optionnel : exemples concrets d'utilisation]
+## Constraints
+- Use ActionCable (already configured)
+- Respect existing design (Tailwind CSS)
+- RSpec tests for backend
+- Jest tests for frontend
+- Don't impact existing performance
 ```
 
-### 3.2 Configuration optionnelle
+#### 3.3 Optional configuration
 
-Créez `.ralphy/config.yaml` pour personnaliser :
+Create `.ralphy/config.yaml` at the project root:
 
 ```yaml
 project:
-  name: mon-projet
+  name: my-project
 
 models:
-  specification: sonnet     # ou opus, haiku
-  implementation: opus      # modèle le plus puissant pour l'implémentation
+  specification: sonnet     # or opus, haiku
+  implementation: opus      # most powerful model for implementation
   qa: sonnet
-  pr: haiku                 # modèle rapide pour la création de PR
+  pr: haiku                 # fast model for PR creation
 
 stack:
-  language: ruby           # ou typescript, python, go...
+  language: ruby
   test_command: bundle exec rspec
 
 timeouts:
@@ -142,166 +160,243 @@ circuit_breaker:
   max_repeated_errors: 3
 ```
 
-## 4. Lancer le workflow
+## 4. Launch the workflow
 
 ```bash
-# Depuis n'importe où
-ralphy start /path/to/mon-projet-existant
+# With the feature name
+ralphy start push-notifications
 
-# Ou depuis le projet
-cd /path/to/mon-projet-existant
-ralphy start .
+# Or with Quick Start
+ralphy start "Add push notifications"
 ```
 
-## 5. Workflow interactif
+### Available options
+
+```bash
+# Force a complete restart (ignore existing progress)
+ralphy start push-notifications --fresh
+
+# Disable real-time display
+ralphy start push-notifications --no-progress
+```
+
+## 5. Interactive workflow
 
 ```
 [14:30:01] Phase: SPECIFICATION
 [14:30:45] Agent: spec-agent completed
-[14:30:45] === VALIDATION REQUISE ===
-[14:30:45] Fichiers générés:
-[14:30:45]   - specs/SPEC.md
-[14:30:45]   - specs/TASKS.md (8 tâches)
+[14:30:45] === VALIDATION REQUIRED ===
+[14:30:45] Generated files:
+[14:30:45]   - docs/features/push-notifications/SPEC.md
+[14:30:45]   - docs/features/push-notifications/TASKS.md (8 tasks)
 [14:30:45]
-[14:30:45] Approuver ? [y/n]: _     ← Vérifiez les specs avant de continuer
+[14:30:45] Approve? [y/n]: _     ← Review specs before continuing
 ```
 
-**Vous validez 2 fois** :
+**You validate twice**:
 
-1. Après génération des specs (SPEC.md + TASKS.md)
-2. Après le rapport QA (avant création de la PR)
+1. After spec generation (SPEC.md + TASKS.md)
+2. After QA report (before PR creation)
 
-## 6. Commandes utiles
+### Real-time display
+
+During execution, you see:
+- **Progress**: task progress bar
+- **Activity**: files read/written, tests launched
+- **Tokens**: consumption and estimated cost in USD
+
+## 6. Useful commands
 
 ```bash
-# Voir le statut
-ralphy status /path/to/mon-projet
+# View feature status
+ralphy status push-notifications
 
-# Interrompre si nécessaire
-ralphy abort /path/to/mon-projet
+# View all features in progress
+ralphy status --all
 
-# Réinitialiser l'état
-ralphy reset /path/to/mon-projet
+# Interrupt if needed
+ralphy abort push-notifications
+
+# Reset state (with confirmation)
+ralphy reset push-notifications
 ```
 
-## 7. Structure générée
+## 7. Automatic resume
 
-Après exécution, votre projet aura :
+If the workflow is interrupted (crash, timeout, Ctrl+C), relaunch:
+
+```bash
+ralphy start push-notifications
+```
+
+Ralphy automatically resumes:
+- **Phase**: skips SPECIFICATION if SPEC.md already exists
+- **Task**: resumes from the last completed task
+
+To force a complete restart:
+
+```bash
+ralphy start push-notifications --fresh
+```
+
+## 8. Generated structure
+
+After execution, your project will have:
 
 ```
-mon-projet-existant/
+my-existing-project/
+├── docs/features/
+│   └── push-notifications/
+│       ├── PRD.md              # Your input
+│       ├── SPEC.md             # Generated specifications
+│       ├── TASKS.md            # Task list
+│       ├── QA_REPORT.md        # Quality report
+│       └── .ralphy/
+│           └── state.json      # Workflow state
 ├── .ralphy/
-│   ├── state.json          # État du workflow
-│   └── config.yaml         # Config (si créée)
-├── specs/
-│   ├── SPEC.md             # Spécifications générées
-│   ├── TASKS.md            # Liste des tâches
-│   └── QA_REPORT.md        # Rapport qualité
-├── PRD.md                  # Votre input
-├── src/                    # Code généré/modifié
-└── tests/                  # Tests générés
+│   ├── config.yaml             # Global config (optional)
+│   └── prompts/                # Custom prompts (optional)
+├── src/                        # Generated/modified code
+└── tests/                      # Generated tests
 ```
 
-## 8. Bonnes pratiques
+## 9. Customize prompts
+
+To adapt agent behavior to your stack:
+
+```bash
+# Copy default templates
+ralphy init-prompts
+
+# Overwrite existing prompts
+ralphy init-prompts --force
+```
+
+This creates `.ralphy/prompts/` with 4 files you can edit:
+- `spec_agent.md` - Specification generation
+- `dev_agent.md` - Implementation
+- `qa_agent.md` - Quality analysis
+- `pr_agent.md` - PR creation
+
+## 10. Best practices
 
 | Do | Don't |
 |----|-------|
-| PRD précis et détaillé | PRD vague ("améliorer le code") |
-| Scope limité (1 feature = 1 PR) | Scope trop large |
-| Spécifier la stack existante | Laisser deviner |
-| Mentionner les conventions | Ignorer le style existant |
-| Relire SPEC.md avant validation | Valider à l'aveugle |
+| Precise, detailed PRD | Vague PRD ("improve the code") |
+| Limited scope (1 feature = 1 PR) | Too broad scope |
+| Specify existing stack | Let it guess |
+| Mention conventions | Ignore existing style |
+| Review SPEC.md before validation | Validate blindly |
 
-## 9. Exemple concret
+## 11. Concrete example: Google OAuth
 
 ```markdown
-# PRD.md - Ajout authentification OAuth
+# PRD.md - Add OAuth authentication
 
-## Contexte
-Application Rails 8 existante avec Devise pour l'auth classique.
-Besoin d'ajouter l'authentification Google OAuth.
+## Context
+Existing Rails 8 application with Devise for classic auth.
+Need to add Google OAuth authentication.
 
-## Objectif
-Permettre aux utilisateurs de se connecter via leur compte Google.
+## Objective
+Allow users to sign in via their Google account.
 
-## Fonctionnalités
-- Bouton "Se connecter avec Google" sur la page de login
-- Création automatique de compte si premier login OAuth
-- Liaison compte existant si email correspond
+## Features
+- "Sign in with Google" button on login page
+- Automatic account creation on first OAuth login
+- Link existing account if email matches
 
-## Contraintes
-- Utiliser la gem `omniauth-google-oauth2`
-- Respecter le design existant (Tailwind CSS)
-- Tests RSpec pour les nouveaux controllers
-- Ne pas casser l'auth Devise existante
+## Constraints
+- Use `omniauth-google-oauth2` gem
+- Respect existing design (Tailwind CSS)
+- RSpec tests for new controllers
+- Don't break existing Devise auth
 
-## Variables d'environnement
+## Environment variables
 - GOOGLE_CLIENT_ID
 - GOOGLE_CLIENT_SECRET
 ```
 
-Puis :
+Then:
 
 ```bash
-ralphy start .
+# Option 1: Create manually
+mkdir -p docs/features/oauth-google
+# Copy the PRD above to docs/features/oauth-google/PRD.md
+ralphy start oauth-google
+
+# Option 2: Quick Start
+ralphy start "Add Google OAuth authentication with omniauth"
 ```
 
-## 10. Dépannage
+## 12. Troubleshooting
 
-### Erreur "externally-managed-environment"
+### "externally-managed-environment" error
 
-Si vous voyez cette erreur avec `pip3 install`, c'est normal sur macOS avec Python Homebrew. **Utilisez pipx ou uv** (voir section Installation ci-dessus).
+If you see this error with `pip3 install`, it's normal on macOS with Homebrew Python. **Use pipx or uv** (see Installation section above).
 
 ```bash
-# ❌ Ne fonctionne pas (erreur externally-managed-environment)
+# Doesn't work (externally-managed-environment error)
 pip3 install -e .
 
-# ✅ Utilisez pipx
-pipx install -e /chemin/vers/Ralphy/
+# Use pipx
+pipx install -e /path/to/Ralphy/
 
-# ✅ Ou uv
-uv tool install -e /chemin/vers/Ralphy/
+# Or uv
+uv tool install -e /path/to/Ralphy/
 ```
 
-### Le workflow est bloqué
+### Workflow is stuck
 
 ```bash
-# Vérifier le statut
-ralphy status .
+# Check status
+ralphy status my-feature
 
-# Forcer l'arrêt
-ralphy abort .
+# Force stop
+ralphy abort my-feature
 
-# Réinitialiser complètement
-ralphy reset .
+# Reset completely
+ralphy reset my-feature
 ```
 
-### Erreur "PRD.md non trouvé"
+### Resume not working
 
-Assurez-vous que le fichier `PRD.md` existe à la racine du projet cible.
+Verify that files exist:
+- `docs/features/<feature>/SPEC.md`
+- `docs/features/<feature>/TASKS.md`
 
-### Erreur "Claude Code CLI non trouvé"
+Check state in `docs/features/<feature>/.ralphy/state.json`.
+
+### "PRD.md not found" error
+
+Make sure the file exists at `docs/features/<feature>/PRD.md`.
+
+Or use Quick Start which generates the PRD automatically:
+```bash
+ralphy start "Description of your feature"
+```
+
+### "Claude Code CLI not found" error
 
 ```bash
-# Installer Claude Code
+# Install Claude Code
 npm install -g @anthropic-ai/claude-code
 
-# Vérifier l'authentification
+# Verify authentication
 claude --version
 ```
 
-### Erreur "gh non trouvé"
+### "gh not found" error
 
 ```bash
 # macOS
 brew install gh
 
-# Puis s'authentifier
+# Then authenticate
 gh auth login
 ```
 
-## 11. Limitations
+## 13. Limitations
 
-- **Windows** : Non supporté (limitation technique sur `select()`)
-- **Un workflow à la fois** : Un seul workflow peut tourner par projet
-- **Scope raisonnable** : Un PRD = une PR mergeable
+- **Windows**: Not supported (technical limitation with `select()`)
+- **One active workflow per feature**: But you can have multiple features in parallel
+- **Reasonable scope**: One PRD = one mergeable PR
