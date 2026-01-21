@@ -1,10 +1,12 @@
 """Agent PR - Crée la Pull Request sur GitHub."""
 
 import re
+from pathlib import Path
 from typing import Optional
 
 from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.claude import ClaudeResponse
+from ralphy.config import ProjectConfig
 
 
 class PRAgent(BaseAgent):
@@ -13,12 +15,26 @@ class PRAgent(BaseAgent):
     name = "pr-agent"
     prompt_file = "pr_agent.md"
 
-    def __init__(self, *args, branch_name: Optional[str] = None, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        project_path: Path,
+        config: ProjectConfig,
+        feature_name: Optional[str] = None,
+        branch_name: Optional[str] = None,
+        **kwargs,
+    ):
+        super().__init__(project_path, config, **kwargs)
+        self.feature_name = feature_name
         self.branch_name = branch_name or self._generate_branch_name()
 
     def _generate_branch_name(self) -> str:
-        """Génère un nom de branche depuis le nom du projet."""
+        """Génère un nom de branche depuis le nom de feature."""
+        if self.feature_name:
+            # Use feature/<feature-name> format
+            name = self.feature_name.lower()
+            name = re.sub(r"[^a-z0-9]+", "-", name)
+            return f"feature/{name.strip('-')}"
+        # Fallback to project name
         name = self.config.name.lower()
         name = re.sub(r"[^a-z0-9]+", "-", name)
         return name.strip("-")
@@ -30,7 +46,7 @@ class PRAgent(BaseAgent):
             self.logger.error("Template pr_agent.md non trouvé")
             return ""
 
-        qa_report = self.read_file("specs/QA_REPORT.md") or "Rapport QA non disponible"
+        qa_report = self.read_feature_file("QA_REPORT.md") or "Rapport QA non disponible"
 
         prompt = template.replace("{{project_name}}", self.config.name)
         prompt = prompt.replace("{{branch_name}}", self.branch_name)

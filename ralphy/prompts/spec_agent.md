@@ -60,7 +60,7 @@ spec/
 
 ## Ta mission
 
-Génère deux fichiers dans le dossier `specs/`:
+Génère deux fichiers dans le répertoire courant:
 
 ### 1. SPEC.md
 

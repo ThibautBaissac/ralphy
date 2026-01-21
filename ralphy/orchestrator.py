@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from ralphy.agents import DevAgent, PRAgent, QAAgent, SpecAgent
-from ralphy.config import ProjectConfig, ensure_ralph_dir, ensure_specs_dir, load_config
+from ralphy.config import ProjectConfig, ensure_feature_dir, ensure_ralph_dir, load_config
 from ralphy.logger import get_logger
 from ralphy.progress import ProgressDisplay
 from ralphy.state import Phase, StateManager
@@ -29,13 +29,16 @@ class Orchestrator:
     def __init__(
         self,
         project_path: Path,
+        feature_name: str,
         on_output: Optional[Callable[[str], None]] = None,
         show_progress: bool = True,
     ):
         self.project_path = project_path.resolve()
+        self.feature_name = feature_name
+        self.feature_dir = project_path / "docs" / "features" / feature_name
         self._user_output = on_output
         self.config = load_config(self.project_path)
-        self.state_manager = StateManager(self.project_path)
+        self.state_manager = StateManager(self.project_path, feature_name)
         self.validator = HumanValidator()
         self.logger = get_logger()
         self._aborted = False
@@ -82,7 +85,11 @@ class Orchestrator:
             # Checkpoint task as completed and update task counter
             if task_id:
                 self.state_manager.checkpoint_task(task_id, "completed")
-                agent = DevAgent(project_path=self.project_path, config=self.config)
+                agent = DevAgent(
+                    project_path=self.project_path,
+                    config=self.config,
+                    feature_dir=self.feature_dir,
+                )
                 completed, total = agent.count_task_status()
                 self.state_manager.update_tasks(completed, total)
 
@@ -92,8 +99,8 @@ class Orchestrator:
         Vérifie que SPEC.md et TASKS.md existent et ont une taille minimale
         indiquant un contenu substantiel.
         """
-        spec_path = self.project_path / "specs" / "SPEC.md"
-        tasks_path = self.project_path / "specs" / "TASKS.md"
+        spec_path = self.feature_dir / "SPEC.md"
+        tasks_path = self.feature_dir / "TASKS.md"
         return (
             spec_path.exists()
             and tasks_path.exists()
@@ -106,7 +113,7 @@ class Orchestrator:
 
         Vérifie que QA_REPORT.md existe et a une taille minimale.
         """
-        qa_path = self.project_path / "specs" / "QA_REPORT.md"
+        qa_path = self.feature_dir / "QA_REPORT.md"
         return qa_path.exists() and qa_path.stat().st_size > 500
 
     def _get_qa_report_summary(self) -> dict:
@@ -117,7 +124,7 @@ class Orchestrator:
         """
         import re
 
-        qa_path = self.project_path / "specs" / "QA_REPORT.md"
+        qa_path = self.feature_dir / "QA_REPORT.md"
         if not qa_path.exists():
             return {"score": "N/A", "critical_issues": 0}
 
@@ -212,6 +219,7 @@ class Orchestrator:
         agent = DevAgent(
             project_path=self.project_path,
             config=self.config,
+            feature_dir=self.feature_dir,
         )
         completed, total = agent.count_task_status()
         if total > 0:
@@ -238,7 +246,7 @@ class Orchestrator:
         try:
             self._validate_prerequisites()
             ensure_ralph_dir(self.project_path)
-            ensure_specs_dir(self.project_path)
+            ensure_feature_dir(self.project_path, self.feature_name)
 
             # Détermine si on peut reprendre depuis une phase précédente
             resume_phase = None
@@ -330,9 +338,9 @@ class Orchestrator:
 
     def _validate_prerequisites(self) -> None:
         """Vérifie les prérequis."""
-        prd_path = self.project_path / "PRD.md"
+        prd_path = self.feature_dir / "PRD.md"
         if not prd_path.exists():
-            raise WorkflowError(f"PRD.md non trouvé dans {self.project_path}")
+            raise WorkflowError(f"PRD.md non trouvé dans {self.feature_dir}")
 
         # Vérifie que le projet n'est pas déjà en cours
         if self.state_manager.is_running():
@@ -348,7 +356,11 @@ class Orchestrator:
         if not resume_task_id:
             return None
 
-        agent = DevAgent(project_path=self.project_path, config=self.config)
+        agent = DevAgent(
+            project_path=self.project_path,
+            config=self.config,
+            feature_dir=self.feature_dir,
+        )
         next_task = agent.get_next_pending_task_after(resume_task_id)
 
         if next_task:
@@ -374,6 +386,7 @@ class Orchestrator:
                 config=self.config,
                 on_output=self.on_output,
                 model=self.config.models.specification,
+                feature_dir=self.feature_dir,
             )
 
             result = agent.run(timeout=self.config.timeouts.specification)
@@ -399,7 +412,7 @@ class Orchestrator:
 
         tasks_count = self.state_manager.state.tasks_total
         validation = self.validator.request_spec_validation(
-            self.project_path,
+            self.feature_dir,
             tasks_count,
         )
 
@@ -434,6 +447,7 @@ class Orchestrator:
                 config=self.config,
                 on_output=self.on_output,
                 model=self.config.models.implementation,
+                feature_dir=self.feature_dir,
             )
 
             result = agent.run(
@@ -469,6 +483,7 @@ class Orchestrator:
                 config=self.config,
                 on_output=self.on_output,
                 model=self.config.models.qa,
+                feature_dir=self.feature_dir,
             )
 
             result = agent.run(timeout=self.config.timeouts.qa)
@@ -489,7 +504,7 @@ class Orchestrator:
         qa_summary = self._get_qa_report_summary()
 
         validation = self.validator.request_qa_validation(
-            self.project_path,
+            self.feature_dir,
             qa_summary,
         )
 
@@ -512,6 +527,8 @@ class Orchestrator:
                 config=self.config,
                 on_output=self.on_output,
                 model=self.config.models.pr,
+                feature_dir=self.feature_dir,
+                feature_name=self.feature_name,
             )
 
             result = agent.run(timeout=self.config.timeouts.pr)

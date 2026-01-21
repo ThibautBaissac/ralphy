@@ -1,5 +1,6 @@
 """Interface CLI pour Ralphy."""
 
+import re
 import sys
 from importlib import resources
 from pathlib import Path
@@ -15,10 +16,14 @@ from ralphy.claude import (
     check_gh_installed,
     check_git_installed,
 )
-from ralphy.config import load_config
+from ralphy.config import get_feature_dir, load_config
 from ralphy.logger import get_logger
 from ralphy.orchestrator import Orchestrator
 from ralphy.state import Phase, StateManager
+
+
+# Feature name validation regex
+FEATURE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 
 # Liste des fichiers de prompts à copier
@@ -98,20 +103,28 @@ def main():
 
 
 @main.command()
-@click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.argument("feature_name", type=str)
 @click.option("--no-progress", is_flag=True, help="Désactive l'affichage de progression")
 @click.option("--fresh", is_flag=True, help="Force un redémarrage complet sans reprise")
-def start(project_path: str, no_progress: bool, fresh: bool):
-    """Démarre un workflow Ralphy.
+def start(feature_name: str, no_progress: bool, fresh: bool):
+    """Démarre un workflow Ralphy pour une feature.
 
-    PROJECT_PATH: Chemin vers le projet contenant PRD.md
+    FEATURE_NAME: Nom de la feature (ex: user-authentication)
+
+    Le PRD.md doit être placé dans docs/features/<feature-name>/PRD.md
 
     Par défaut, si le workflow a été interrompu, il reprendra depuis la
     dernière phase complétée. Utilisez --fresh pour forcer un redémarrage complet.
     """
-    project = Path(project_path)
+    project = Path.cwd()
     logger = get_logger()
     show_progress = not no_progress
+
+    # Validate feature name
+    if not FEATURE_NAME_PATTERN.match(feature_name):
+        logger.error(f"Invalid feature name: {feature_name}")
+        logger.error("Feature name must start with alphanumeric and contain only alphanumeric, - or _")
+        sys.exit(1)
 
     # Vérifications préliminaires
     if not check_claude_installed():
@@ -126,13 +139,16 @@ def start(project_path: str, no_progress: bool, fresh: bool):
         logger.error("GitHub CLI (gh) non trouvé. Installez-le: https://cli.github.com/")
         sys.exit(1)
 
-    prd_path = project / "PRD.md"
+    # Check PRD in feature directory
+    feature_dir = get_feature_dir(project, feature_name)
+    prd_path = feature_dir / "PRD.md"
     if not prd_path.exists():
-        logger.error(f"PRD.md non trouvé dans {project}")
+        logger.error(f"PRD.md not found in {feature_dir}")
+        logger.error(f"Create {prd_path} with your feature requirements")
         sys.exit(1)
 
     # Vérifie si un workflow est déjà en cours
-    state_manager = StateManager(project)
+    state_manager = StateManager(project, feature_name)
     if state_manager.is_running():
         logger.warn(f"Un workflow est déjà en cours (phase: {state_manager.state.phase.value})")
         if not click.confirm("Voulez-vous le réinitialiser ?", default=False):
@@ -140,27 +156,82 @@ def start(project_path: str, no_progress: bool, fresh: bool):
         state_manager.reset()
 
     # Lance l'orchestrateur
-    logger.info(f"Démarrage du workflow pour: {project}")
+    logger.info(f"Démarrage du workflow pour: {feature_name}")
     logger.newline()
 
-    orchestrator = Orchestrator(project, show_progress=show_progress)
+    orchestrator = Orchestrator(project, feature_name=feature_name, show_progress=show_progress)
     success = orchestrator.run(fresh=fresh)
 
     sys.exit(0 if success else 1)
 
 
 @main.command()
-@click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True), required=False)
-def status(project_path: str = None):
+@click.argument("feature_name", type=str, required=False)
+@click.option("--all", "show_all", is_flag=True, help="Affiche le statut de toutes les features")
+def status(feature_name: str = None, show_all: bool = False):
     """Affiche le statut du workflow.
 
-    PROJECT_PATH: Chemin vers le projet (défaut: répertoire courant)
+    FEATURE_NAME: Nom de la feature (requis sauf si --all)
     """
-    project = Path(project_path) if project_path else Path.cwd()
-    state_manager = StateManager(project)
+    project = Path.cwd()
+    logger = get_logger()
+
+    if show_all:
+        # Show status for all features
+        features_dir = project / "docs" / "features"
+        if not features_dir.exists():
+            console.print("[yellow]No features found.[/yellow]")
+            console.print(f"[dim]Create a feature with: mkdir -p docs/features/<feature-name> && touch docs/features/<feature-name>/PRD.md[/dim]")
+            return
+
+        features = [d.name for d in features_dir.iterdir() if d.is_dir()]
+        if not features:
+            console.print("[yellow]No features found.[/yellow]")
+            return
+
+        table = Table(title="Ralphy Features Status")
+        table.add_column("Feature", style="cyan")
+        table.add_column("Phase", style="green")
+        table.add_column("Progress", style="blue")
+        table.add_column("Last Completed", style="dim")
+
+        for fname in sorted(features):
+            state_manager = StateManager(project, fname)
+            state = state_manager.state
+
+            phase_style = "green"
+            if state.phase in (Phase.FAILED, Phase.REJECTED):
+                phase_style = "red"
+            elif state.phase in (Phase.AWAITING_SPEC_VALIDATION, Phase.AWAITING_QA_VALIDATION):
+                phase_style = "yellow"
+
+            progress = f"{state.tasks_completed}/{state.tasks_total}" if state.tasks_total > 0 else "-"
+            last_completed = state.last_completed_phase or "-"
+
+            table.add_row(
+                fname,
+                f"[{phase_style}]{state.phase.value}[/{phase_style}]",
+                progress,
+                last_completed,
+            )
+
+        console.print(table)
+        return
+
+    # Single feature status
+    if not feature_name:
+        logger.error("Feature name required. Use --all to show all features.")
+        sys.exit(1)
+
+    # Validate feature name
+    if not FEATURE_NAME_PATTERN.match(feature_name):
+        logger.error(f"Invalid feature name: {feature_name}")
+        sys.exit(1)
+
+    state_manager = StateManager(project, feature_name)
     state = state_manager.state
 
-    table = Table(title=f"Statut Ralphy - {project.name}")
+    table = Table(title=f"Statut Ralphy - {feature_name}")
     table.add_column("Propriété", style="cyan")
     table.add_column("Valeur", style="green")
 
@@ -194,27 +265,33 @@ def status(project_path: str = None):
         console.print()
         if state.last_completed_phase:
             console.print(
-                f"[dim]💡 Pour reprendre le workflow: [cyan]ralphy start {project}[/cyan][/dim]"
+                f"[dim]💡 Pour reprendre le workflow: [cyan]ralphy start {feature_name}[/cyan][/dim]"
             )
             console.print(
-                f"[dim]💡 Pour redémarrer de zéro: [cyan]ralphy start {project} --fresh[/cyan][/dim]"
+                f"[dim]💡 Pour redémarrer de zéro: [cyan]ralphy start {feature_name} --fresh[/cyan][/dim]"
             )
         else:
             console.print(
-                f"[dim]💡 Pour relancer le workflow: [cyan]ralphy start {project}[/cyan][/dim]"
+                f"[dim]💡 Pour relancer le workflow: [cyan]ralphy start {feature_name}[/cyan][/dim]"
             )
 
 
 @main.command()
-@click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True), required=False)
-def abort(project_path: str = None):
+@click.argument("feature_name", type=str)
+def abort(feature_name: str):
     """Abort le workflow en cours.
 
-    PROJECT_PATH: Chemin vers le projet (défaut: répertoire courant)
+    FEATURE_NAME: Nom de la feature
     """
-    project = Path(project_path) if project_path else Path.cwd()
-    state_manager = StateManager(project)
+    project = Path.cwd()
     logger = get_logger()
+
+    # Validate feature name
+    if not FEATURE_NAME_PATTERN.match(feature_name):
+        logger.error(f"Invalid feature name: {feature_name}")
+        sys.exit(1)
+
+    state_manager = StateManager(project, feature_name)
 
     # Vérifie si le workflow est actif (running ou en attente de validation)
     if not state_manager.is_running() and not state_manager.is_awaiting_validation():
@@ -230,17 +307,23 @@ def abort(project_path: str = None):
 
 
 @main.command()
-@click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True), required=False)
-def reset(project_path: str = None):
+@click.argument("feature_name", type=str)
+def reset(feature_name: str):
     """Réinitialise l'état du workflow.
 
-    PROJECT_PATH: Chemin vers le projet (défaut: répertoire courant)
+    FEATURE_NAME: Nom de la feature
     """
-    project = Path(project_path) if project_path else Path.cwd()
-    state_manager = StateManager(project)
+    project = Path.cwd()
     logger = get_logger()
 
-    if click.confirm("Réinitialiser l'état du workflow ?", default=False):
+    # Validate feature name
+    if not FEATURE_NAME_PATTERN.match(feature_name):
+        logger.error(f"Invalid feature name: {feature_name}")
+        sys.exit(1)
+
+    state_manager = StateManager(project, feature_name)
+
+    if click.confirm(f"Réinitialiser l'état du workflow pour {feature_name} ?", default=False):
         state_manager.reset()
         logger.info("État réinitialisé")
 

@@ -25,14 +25,14 @@ class DevAgent(BaseAgent):
             self.logger.error("Template dev_agent.md non trouvé")
             return ""
 
-        spec_content = self.read_file("specs/SPEC.md")
+        spec_content = self.read_feature_file("SPEC.md")
         if not spec_content:
-            self.logger.error("specs/SPEC.md non trouvé")
+            self.logger.error("SPEC.md non trouvé dans le dossier feature")
             return ""
 
-        tasks_content = self.read_file("specs/TASKS.md")
+        tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
-            self.logger.error("specs/TASKS.md non trouvé")
+            self.logger.error("TASKS.md non trouvé dans le dossier feature")
             return ""
 
         prompt = template.replace("{{project_name}}", self.config.name)
@@ -64,7 +64,7 @@ class DevAgent(BaseAgent):
 - Continue séquentiellement jusqu'à la fin
 - NE réimplémente PAS les tâches marquées `completed`
 
-Vérifie: Avant de commencer, lis `specs/TASKS.md` et confirme que les tâches avant {task_id} sont `completed`.
+Vérifie: Avant de commencer, lis `TASKS.md` et confirme que les tâches avant {task_id} sont `completed`.
 """
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
@@ -89,7 +89,7 @@ Vérifie: Avant de commencer, lis `specs/TASKS.md` et confirme que les tâches a
 
     def count_task_status(self) -> Tuple[int, int]:
         """Compte les tâches completed et le total."""
-        tasks_content = self.read_file("specs/TASKS.md")
+        tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return 0, 0
 
@@ -102,7 +102,7 @@ Vérifie: Avant de commencer, lis `specs/TASKS.md` et confirme que les tâches a
 
     def get_in_progress_task(self) -> str | None:
         """Retourne l'ID de la tâche en cours (in_progress) s'il y en a une."""
-        tasks_content = self.read_file("specs/TASKS.md")
+        tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return None
 
@@ -125,7 +125,7 @@ Vérifie: Avant de commencer, lis `specs/TASKS.md` et confirme que les tâches a
         Returns:
             ID de la prochaine tâche non-complétée, ou None si toutes complétées
         """
-        tasks_content = self.read_file("specs/TASKS.md")
+        tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return None
 

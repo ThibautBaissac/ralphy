@@ -28,10 +28,10 @@ class QAAgent(BaseAgent):
         """Vérifie que QA_REPORT.md a été généré."""
         files_generated = []
 
-        qa_report_path = self.project_path / "specs" / "QA_REPORT.md"
+        qa_report_path = self.feature_dir / "QA_REPORT.md"
 
         if qa_report_path.exists():
-            files_generated.append("specs/QA_REPORT.md")
+            files_generated.append("QA_REPORT.md")
         else:
             return AgentResult(
                 success=False,
@@ -49,7 +49,7 @@ class QAAgent(BaseAgent):
 
     def get_report_summary(self) -> dict:
         """Extrait un résumé du rapport QA."""
-        content = self.read_file("specs/QA_REPORT.md")
+        content = self.read_feature_file("QA_REPORT.md")
         if not content:
             return {"score": "N/A", "critical_issues": 0}
 

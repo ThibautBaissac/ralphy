@@ -235,8 +235,29 @@ def ensure_ralph_dir(project_path: Path) -> Path:
     return ralph_dir
 
 
-def ensure_specs_dir(project_path: Path) -> Path:
-    """S'assure que le dossier specs existe et retourne son chemin."""
-    specs_dir = project_path / "specs"
-    specs_dir.mkdir(parents=True, exist_ok=True)
-    return specs_dir
+def get_feature_dir(project_path: Path, feature_name: str) -> Path:
+    """Returns the feature directory path: docs/features/<feature-name>/
+
+    Args:
+        project_path: Root path of the project
+        feature_name: Name of the feature
+
+    Returns:
+        Path to the feature directory
+    """
+    return project_path / "docs" / "features" / feature_name
+
+
+def ensure_feature_dir(project_path: Path, feature_name: str) -> Path:
+    """Creates and returns the feature directory.
+
+    Args:
+        project_path: Root path of the project
+        feature_name: Name of the feature
+
+    Returns:
+        Path to the created feature directory
+    """
+    feature_dir = get_feature_dir(project_path, feature_name)
+    feature_dir.mkdir(parents=True, exist_ok=True)
+    return feature_dir

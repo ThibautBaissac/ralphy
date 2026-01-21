@@ -72,17 +72,19 @@ class TestSpecAgent:
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire avec PRD."""
+        """Crée un projet temporaire avec PRD dans feature directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
-            (project_path / "PRD.md").write_text("# Test PRD\n\n## Objectif\nTest")
-            (project_path / "specs").mkdir()
-            yield project_path
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / "PRD.md").write_text("# Test PRD\n\n## Objectif\nTest")
+            yield project_path, feature_dir
 
     def test_count_tasks(self, temp_project):
         """Test du comptage de tâches."""
+        project_path, feature_dir = temp_project
         config = ProjectConfig()
-        agent = SpecAgent(temp_project, config)
+        agent = SpecAgent(project_path, config, feature_dir=feature_dir)
 
         # Crée un fichier TASKS.md
         tasks_content = """# Tâches
@@ -95,7 +97,7 @@ class TestSpecAgent:
 ## Tâche 3: Tests
 - **Statut**: pending
 """
-        (temp_project / "specs" / "TASKS.md").write_text(tasks_content)
+        (feature_dir / "TASKS.md").write_text(tasks_content)
 
         count = agent.count_tasks()
         assert count == 3
@@ -106,25 +108,26 @@ class TestDevAgent:
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire avec specs."""
+        """Crée un projet temporaire avec specs dans feature directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
-            specs_dir = project_path / "specs"
-            specs_dir.mkdir()
-            (specs_dir / "SPEC.md").write_text("# Specs")
-            (specs_dir / "TASKS.md").write_text("""# Tâches
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / "SPEC.md").write_text("# Specs")
+            (feature_dir / "TASKS.md").write_text("""# Tâches
 ## Tâche 1: Test
 - **Statut**: completed
 
 ## Tâche 2: Test2
 - **Statut**: pending
 """)
-            yield project_path
+            yield project_path, feature_dir
 
     def test_count_task_status(self, temp_project):
         """Test du comptage des statuts de tâches."""
+        project_path, feature_dir = temp_project
         config = ProjectConfig()
-        agent = DevAgent(temp_project, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         completed, total = agent.count_task_status()
         assert completed == 1
@@ -132,7 +135,8 @@ class TestDevAgent:
 
     def test_count_task_status_with_triple_hash(self, temp_project):
         """Test du comptage avec format ### Tâche (généré par spec-agent)."""
-        (temp_project / "specs" / "TASKS.md").write_text("""# Tâches
+        project_path, feature_dir = temp_project
+        (feature_dir / "TASKS.md").write_text("""# Tâches
 ### Tâche 1.1: [Migration - Setup]
 - **Statut**: completed
 
@@ -143,7 +147,7 @@ class TestDevAgent:
 - **Statut**: pending
 """)
         config = ProjectConfig()
-        agent = DevAgent(temp_project, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         completed, total = agent.count_task_status()
         assert total == 3
@@ -151,7 +155,8 @@ class TestDevAgent:
 
     def test_get_in_progress_task(self, temp_project):
         """Test de la détection d'une tâche in_progress."""
-        (temp_project / "specs" / "TASKS.md").write_text("""# Tâches
+        project_path, feature_dir = temp_project
+        (feature_dir / "TASKS.md").write_text("""# Tâches
 ### Tâche 1.1: [Migration - Setup]
 - **Statut**: completed
 
@@ -162,15 +167,16 @@ class TestDevAgent:
 - **Statut**: pending
 """)
         config = ProjectConfig()
-        agent = DevAgent(temp_project, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         in_progress = agent.get_in_progress_task()
         assert in_progress == "1.2"
 
     def test_get_in_progress_task_none(self, temp_project):
         """Test quand aucune tâche n'est in_progress."""
+        project_path, feature_dir = temp_project
         config = ProjectConfig()
-        agent = DevAgent(temp_project, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         in_progress = agent.get_in_progress_task()
         assert in_progress is None
@@ -181,13 +187,13 @@ class TestDevAgentResume:
 
     @pytest.fixture
     def temp_project_with_specs(self):
-        """Crée un projet temporaire avec specs et tâches."""
+        """Crée un projet temporaire avec specs et tâches dans feature directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
-            specs_dir = project_path / "specs"
-            specs_dir.mkdir()
-            (specs_dir / "SPEC.md").write_text("# Specs\nTest spec content")
-            (specs_dir / "TASKS.md").write_text("""# Tâches
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / "SPEC.md").write_text("# Specs\nTest spec content")
+            (feature_dir / "TASKS.md").write_text("""# Tâches
 
 ### Tâche 1.1: [Migration - Setup]
 - **Statut**: completed
@@ -201,19 +207,21 @@ class TestDevAgentResume:
 ### Tâche 1.4: [View - Users]
 - **Statut**: pending
 """)
-            yield project_path
+            yield project_path, feature_dir
 
     def test_build_prompt_without_resume(self, temp_project_with_specs):
         """Test que build_prompt sans resume n'inclut pas l'instruction de reprise."""
+        project_path, feature_dir = temp_project_with_specs
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
         prompt = agent.build_prompt()
         assert "MODE REPRISE" not in prompt
 
     def test_build_prompt_with_resume(self, temp_project_with_specs):
         """Test que build_prompt avec resume inclut l'instruction de reprise."""
+        project_path, feature_dir = temp_project_with_specs
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
         prompt = agent.build_prompt(start_from_task="1.3")
         assert "MODE REPRISE ACTIF" in prompt
         assert "tâche 1.3" in prompt
@@ -221,8 +229,9 @@ class TestDevAgentResume:
 
     def test_get_next_pending_task_after_completed(self, temp_project_with_specs):
         """Test de la recherche de la prochaine tâche après une completed."""
+        project_path, feature_dir = temp_project_with_specs
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         # After 1.2 (completed), next pending is 1.3
         next_task = agent.get_next_pending_task_after("1.2")
@@ -232,8 +241,9 @@ class TestDevAgentResume:
         self, temp_project_with_specs
     ):
         """Test que get_next_pending_task_after retourne la même si elle est pending."""
+        project_path, feature_dir = temp_project_with_specs
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         # 1.3 is pending, should return it
         next_task = agent.get_next_pending_task_after("1.3")
@@ -243,8 +253,9 @@ class TestDevAgentResume:
         self, temp_project_with_specs
     ):
         """Test que get_next_pending_task_after saute les tâches completed."""
+        project_path, feature_dir = temp_project_with_specs
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         # After 1.1, next pending is 1.3 (1.2 is also completed)
         next_task = agent.get_next_pending_task_after("1.1")
@@ -254,8 +265,9 @@ class TestDevAgentResume:
         self, temp_project_with_specs
     ):
         """Test que get_next_pending_task_after retourne None si toutes complétées."""
+        project_path, feature_dir = temp_project_with_specs
         # Update TASKS.md to have all completed
-        (temp_project_with_specs / "specs" / "TASKS.md").write_text("""# Tâches
+        (feature_dir / "TASKS.md").write_text("""# Tâches
 
 ### Tâche 1.1: [Migration - Setup]
 - **Statut**: completed
@@ -264,14 +276,15 @@ class TestDevAgentResume:
 - **Statut**: completed
 """)
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         next_task = agent.get_next_pending_task_after("1.2")
         assert next_task is None
 
     def test_get_next_pending_task_after_with_in_progress(self, temp_project_with_specs):
         """Test avec une tâche in_progress."""
-        (temp_project_with_specs / "specs" / "TASKS.md").write_text("""# Tâches
+        project_path, feature_dir = temp_project_with_specs
+        (feature_dir / "TASKS.md").write_text("""# Tâches
 
 ### Tâche 1.1: [Migration - Setup]
 - **Statut**: completed
@@ -283,7 +296,7 @@ class TestDevAgentResume:
 - **Statut**: pending
 """)
         config = ProjectConfig()
-        agent = DevAgent(temp_project_with_specs, config)
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
 
         # 1.2 is in_progress, should return it
         next_task = agent.get_next_pending_task_after("1.2")

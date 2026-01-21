@@ -36,11 +36,13 @@ class BaseAgent(ABC):
         config: ProjectConfig,
         on_output: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
+        feature_dir: Optional[Path] = None,
     ):
         self.project_path = project_path
         self.config = config
         self.on_output = on_output
         self.model = model
+        self.feature_dir = feature_dir
         self.logger = get_logger()
 
     @abstractmethod
@@ -102,6 +104,22 @@ class BaseAgent(ABC):
     def read_file(self, filename: str) -> Optional[str]:
         """Lit un fichier du projet."""
         filepath = self.project_path / filename
+        if filepath.exists():
+            return filepath.read_text(encoding="utf-8")
+        return None
+
+    def read_feature_file(self, filename: str) -> Optional[str]:
+        """Read a file from the feature directory.
+
+        Args:
+            filename: Name of the file to read (e.g., "PRD.md", "SPEC.md")
+
+        Returns:
+            File content as string, or None if file doesn't exist or no feature_dir
+        """
+        if not self.feature_dir:
+            return None
+        filepath = self.feature_dir / filename
         if filepath.exists():
             return filepath.read_text(encoding="utf-8")
         return None

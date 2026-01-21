@@ -61,14 +61,19 @@ class HumanValidator:
 
     def request_spec_validation(
         self,
-        project_path: Path,
+        feature_dir: Path,
         tasks_count: int,
     ) -> ValidationResult:
-        """Demande validation des spécifications."""
-        files = ["specs/SPEC.md", f"specs/TASKS.md ({tasks_count} tâches)"]
+        """Demande validation des spécifications.
+
+        Args:
+            feature_dir: Path to the feature directory containing SPEC.md and TASKS.md
+            tasks_count: Number of tasks in TASKS.md
+        """
+        files = ["SPEC.md", f"TASKS.md ({tasks_count} tâches)"]
 
         # Lecture du résumé des specs
-        spec_path = project_path / "specs" / "SPEC.md"
+        spec_path = feature_dir / "SPEC.md"
         summary = None
         if spec_path.exists():
             content = spec_path.read_text(encoding="utf-8")
@@ -84,11 +89,16 @@ class HumanValidator:
 
     def request_qa_validation(
         self,
-        project_path: Path,
+        feature_dir: Path,
         qa_summary: dict,
     ) -> ValidationResult:
-        """Demande validation du rapport QA."""
-        files = ["specs/QA_REPORT.md"]
+        """Demande validation du rapport QA.
+
+        Args:
+            feature_dir: Path to the feature directory containing QA_REPORT.md
+            qa_summary: Dictionary with score and critical_issues count
+        """
+        files = ["QA_REPORT.md"]
 
         summary_text = f"""Score: {qa_summary.get('score', 'N/A')}
 Issues critiques: {qa_summary.get('critical_issues', 0)}"""

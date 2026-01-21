@@ -24,7 +24,7 @@ Analyse tous les fichiers dans:
 
 ## Ta mission
 
-Génère un fichier `specs/QA_REPORT.md` contenant:
+Génère un fichier `QA_REPORT.md` dans le répertoire courant contenant:
 
 ### 1. Analyse de la qualité du code
 

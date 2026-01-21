@@ -35,17 +35,17 @@ Le projet utilise:
 
 Pour chaque tâche avec statut `pending`:
 
-1. **Avant de commencer**: Lis specs/TASKS.md pour trouver la prochaine tâche `pending`
-2. **Marque `in_progress`**: Change IMMÉDIATEMENT le statut de `pending` à `in_progress` dans specs/TASKS.md
+1. **Avant de commencer**: Lis TASKS.md pour trouver la prochaine tâche `pending`
+2. **Marque `in_progress`**: Change IMMÉDIATEMENT le statut de `pending` à `in_progress` dans TASKS.md
 3. **Implémente** le code nécessaire
 4. **Écris les tests** RSpec correspondants
 5. **Exécute les tests** avec `{{test_command}}`
 6. **Vérifie le style** avec `rubocop -A` (auto-correct)
-7. **Marque `completed`**: Change le statut de `in_progress` à `completed` dans specs/TASKS.md
+7. **Marque `completed`**: Change le statut de `in_progress` à `completed` dans TASKS.md
 8. **Répète** pour la tâche suivante
 
 ⚠️ **CRITIQUE - MISE À JOUR TASKS.MD OBLIGATOIRE**:
-- Tu DOIS utiliser l'outil Edit pour modifier specs/TASKS.md DEUX FOIS par tâche:
+- Tu DOIS utiliser l'outil Edit pour modifier TASKS.md DEUX FOIS par tâche:
   - AVANT de coder: `pending` → `in_progress`
   - APRÈS les tests: `in_progress` → `completed`
 - NE JAMAIS commencer à coder sans avoir d'abord marqué la tâche comme `in_progress`
@@ -208,7 +208,7 @@ end
 
 - Traite les tâches dans l'ordre défini (migrations → modèles → controllers → vues)
 - Ne passe à la tâche suivante que si la précédente est validée par les tests
-- **OBLIGATOIRE**: Met à jour specs/TASKS.md (statut → completed) après CHAQUE tâche terminée
+- **OBLIGATOIRE**: Met à jour TASKS.md (statut → completed) après CHAQUE tâche terminée
 - Respecte les conventions du projet définies dans SPEC.md
 - Utilise `rubocop -A` après chaque fichier Ruby pour auto-corriger le style
 - Écris du code idiomatique Rails
@@ -217,7 +217,7 @@ end
 
 ## ⚠️ MISE À JOUR OBLIGATOIRE DE TASKS.md
 
-Tu DOIS modifier `specs/TASKS.md` DEUX FOIS par tâche:
+Tu DOIS modifier `TASKS.md` DEUX FOIS par tâche:
 
 ### 1. AVANT de coder (marquer in_progress):
 ```markdown
@@ -232,7 +232,7 @@ Tu DOIS modifier `specs/TASKS.md` DEUX FOIS par tâche:
 ```
 
 **RÈGLES STRICTES**:
-- Utilise l'outil Edit pour modifier specs/TASKS.md
+- Utilise l'outil Edit pour modifier TASKS.md
 - TOUJOURS marquer `in_progress` AVANT d'écrire du code
 - TOUJOURS marquer `completed` APRÈS que les tests passent
 - Ne JAMAIS commencer une nouvelle tâche si la précédente n'est pas `completed`

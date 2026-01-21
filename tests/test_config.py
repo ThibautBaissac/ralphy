@@ -11,8 +11,9 @@ from ralphy.config import (
     ProjectConfig,
     StackConfig,
     TimeoutConfig,
+    ensure_feature_dir,
     ensure_ralph_dir,
-    ensure_specs_dir,
+    get_feature_dir,
     load_config,
     save_config,
     validate_model,
@@ -153,11 +154,18 @@ class TestConfigIO:
         assert ralph_dir.exists()
         assert ralph_dir.name == ".ralphy"
 
-    def test_ensure_specs_dir(self, temp_project):
-        """Test de création du dossier specs."""
-        specs_dir = ensure_specs_dir(temp_project)
-        assert specs_dir.exists()
-        assert specs_dir.name == "specs"
+    def test_get_feature_dir(self, temp_project):
+        """Test du chemin du dossier feature."""
+        feature_dir = get_feature_dir(temp_project, "my-feature")
+        assert feature_dir == temp_project / "docs" / "features" / "my-feature"
+
+    def test_ensure_feature_dir(self, temp_project):
+        """Test de création du dossier feature."""
+        feature_dir = ensure_feature_dir(temp_project, "test-feature")
+        assert feature_dir.exists()
+        assert feature_dir.name == "test-feature"
+        assert feature_dir.parent.name == "features"
+        assert feature_dir.parent.parent.name == "docs"
 
     def test_invalid_models_in_config_fallback_to_sonnet(self, temp_project):
         """Test qu'un modèle invalide dans le fichier config retombe sur sonnet."""

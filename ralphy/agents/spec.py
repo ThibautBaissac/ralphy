@@ -20,9 +20,9 @@ class SpecAgent(BaseAgent):
             self.logger.error("Template spec_agent.md non trouvé")
             return ""
 
-        prd_content = self.read_file("PRD.md")
+        prd_content = self.read_feature_file("PRD.md")
         if not prd_content:
-            self.logger.error("PRD.md non trouvé")
+            self.logger.error("PRD.md non trouvé dans le dossier feature")
             return ""
 
         prompt = template.replace("{{project_name}}", self.config.name)
@@ -36,19 +36,19 @@ class SpecAgent(BaseAgent):
         """Vérifie que SPEC.md et TASKS.md ont été générés."""
         files_generated = []
 
-        spec_path = self.project_path / "specs" / "SPEC.md"
-        tasks_path = self.project_path / "specs" / "TASKS.md"
+        spec_path = self.feature_dir / "SPEC.md"
+        tasks_path = self.feature_dir / "TASKS.md"
 
         if spec_path.exists():
-            files_generated.append("specs/SPEC.md")
+            files_generated.append("SPEC.md")
         if tasks_path.exists():
-            files_generated.append("specs/TASKS.md")
+            files_generated.append("TASKS.md")
 
         if len(files_generated) < 2:
             missing = []
-            if "specs/SPEC.md" not in files_generated:
+            if "SPEC.md" not in files_generated:
                 missing.append("SPEC.md")
-            if "specs/TASKS.md" not in files_generated:
+            if "TASKS.md" not in files_generated:
                 missing.append("TASKS.md")
             return AgentResult(
                 success=False,
@@ -72,7 +72,7 @@ class SpecAgent(BaseAgent):
 
     def count_tasks(self) -> int:
         """Compte le nombre de tâches dans TASKS.md."""
-        tasks_content = self.read_file("specs/TASKS.md")
+        tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return 0
         return tasks_content.count("## Tâche")

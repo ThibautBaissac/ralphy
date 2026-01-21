@@ -118,20 +118,35 @@ class WorkflowState:
 class StateManager:
     """Gestionnaire d'état du workflow."""
 
-    def __init__(self, project_path: Path):
+    def __init__(self, project_path: Path, feature_name: Optional[str] = None):
+        """Initialize the state manager.
+
+        Args:
+            project_path: Root path of the project
+            feature_name: Name of the feature (if None, uses legacy project-root state)
+        """
         # Resolve to canonical path (follow symlinks, normalize)
         self.project_path = project_path.resolve()
+        self.feature_name = feature_name
 
         # Verify it's a directory
         if not self.project_path.is_dir():
             raise ValueError(f"Project path must be an existing directory: {project_path}")
 
-        # Prevent symlink attacks on .ralphy directory
-        ralphy_dir = self.project_path / ".ralphy"
-        if ralphy_dir.exists() and ralphy_dir.is_symlink():
-            raise ValueError(".ralphy directory is a symlink - potential security risk")
+        # Determine state file location based on feature_name
+        if feature_name:
+            # Feature-based state in docs/features/<feature-name>/.ralphy/
+            feature_dir = self.project_path / "docs" / "features" / feature_name
+            ralphy_dir = feature_dir / ".ralphy"
+        else:
+            # Legacy: project-root state in .ralphy/
+            ralphy_dir = self.project_path / ".ralphy"
 
-        self.state_file = self.project_path / ".ralphy" / "state.json"
+        # Prevent symlink attacks on .ralphy directory
+        if ralphy_dir.exists() and ralphy_dir.is_symlink():
+            raise ValueError(f"{ralphy_dir} is a symlink - potential security risk")
+
+        self.state_file = ralphy_dir / "state.json"
         self._state: Optional[WorkflowState] = None
 
     @property

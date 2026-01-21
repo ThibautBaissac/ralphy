@@ -53,15 +53,30 @@ class TestStateManager:
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire."""
+        """Crée un projet temporaire avec structure de feature."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             (project_path / ".ralphy").mkdir()
             yield project_path
 
+    @pytest.fixture
+    def temp_project_with_feature(self):
+        """Crée un projet temporaire avec structure de feature."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / ".ralphy").mkdir()
+            yield project_path
+
     def test_load_default_state(self, temp_project):
-        """Test du chargement d'un état par défaut."""
+        """Test du chargement d'un état par défaut (legacy mode)."""
         manager = StateManager(temp_project)
+        assert manager.state.phase == Phase.IDLE
+
+    def test_load_default_state_feature(self, temp_project_with_feature):
+        """Test du chargement d'un état par défaut (feature mode)."""
+        manager = StateManager(temp_project_with_feature, "test-feature")
         assert manager.state.phase == Phase.IDLE
 
     def test_save_and_load(self, temp_project):
@@ -75,6 +90,22 @@ class TestStateManager:
         manager2 = StateManager(temp_project)
         assert manager2.state.phase == Phase.SPECIFICATION
         assert manager2.state.tasks_total == 5
+
+    def test_save_and_load_feature(self, temp_project_with_feature):
+        """Test de sauvegarde et chargement (feature mode)."""
+        manager = StateManager(temp_project_with_feature, "test-feature")
+        manager.transition(Phase.SPECIFICATION)
+        manager.update_tasks(0, 5)
+        manager.save()
+
+        # Nouveau manager charge l'état
+        manager2 = StateManager(temp_project_with_feature, "test-feature")
+        assert manager2.state.phase == Phase.SPECIFICATION
+        assert manager2.state.tasks_total == 5
+
+        # Verify state file is in feature directory
+        state_file = temp_project_with_feature / "docs" / "features" / "test-feature" / ".ralphy" / "state.json"
+        assert state_file.exists()
 
     def test_valid_transition(self, temp_project):
         """Test d'une transition valide."""
@@ -225,15 +256,18 @@ class TestTaskCheckpoints:
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire."""
+        """Crée un projet temporaire avec structure de feature."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
-            (project_path / ".ralphy").mkdir()
-            yield project_path
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / ".ralphy").mkdir()
+            yield project_path, "test-feature"
 
     def test_checkpoint_task_completed(self, temp_project):
         """Test du checkpoint d'une tâche complétée."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.5", "completed")
         assert manager.state.last_completed_task_id == "1.5"
         assert manager.state.last_in_progress_task_id is None
@@ -241,14 +275,16 @@ class TestTaskCheckpoints:
 
     def test_checkpoint_task_in_progress(self, temp_project):
         """Test du checkpoint d'une tâche en cours."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.6", "in_progress")
         assert manager.state.last_in_progress_task_id == "1.6"
         assert manager.state.task_checkpoint_time is not None
 
     def test_completed_clears_in_progress(self, temp_project):
         """Test que marquer completed efface in_progress."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.6", "in_progress")
         assert manager.state.last_in_progress_task_id == "1.6"
 
@@ -258,7 +294,8 @@ class TestTaskCheckpoints:
 
     def test_get_resume_task_prefers_in_progress(self, temp_project):
         """Test que get_resume_task_id préfère in_progress à completed."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.5", "completed")
         manager.checkpoint_task("1.6", "in_progress")
 
@@ -267,19 +304,22 @@ class TestTaskCheckpoints:
 
     def test_get_resume_task_returns_completed_when_no_in_progress(self, temp_project):
         """Test que get_resume_task_id retourne completed si pas de in_progress."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.5", "completed")
 
         assert manager.get_resume_task_id() == "1.5"
 
     def test_get_resume_task_returns_none_when_empty(self, temp_project):
         """Test que get_resume_task_id retourne None si pas de checkpoint."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         assert manager.get_resume_task_id() is None
 
     def test_clear_task_checkpoints(self, temp_project):
         """Test de l'effacement des checkpoints."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.5", "completed")
         manager.checkpoint_task("1.6", "in_progress")
 
@@ -291,11 +331,12 @@ class TestTaskCheckpoints:
 
     def test_checkpoint_persistence(self, temp_project):
         """Test de la persistance des checkpoints."""
-        manager1 = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager1 = StateManager(project_path, feature_name)
         manager1.checkpoint_task("2.3", "completed")
 
         # Create new manager - should load persisted state
-        manager2 = StateManager(temp_project)
+        manager2 = StateManager(project_path, feature_name)
         assert manager2.state.last_completed_task_id == "2.3"
 
     def test_checkpoint_fields_in_from_dict(self):
@@ -328,7 +369,8 @@ class TestTaskCheckpoints:
 
     def test_reset_clears_task_checkpoints(self, temp_project):
         """Test que reset efface les checkpoints de tâche."""
-        manager = StateManager(temp_project)
+        project_path, feature_name = temp_project
+        manager = StateManager(project_path, feature_name)
         manager.checkpoint_task("1.5", "completed")
         manager.checkpoint_task("1.6", "in_progress")
 
