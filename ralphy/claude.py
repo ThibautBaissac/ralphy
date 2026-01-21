@@ -42,12 +42,19 @@ class TokenUsage:
 
     @property
     def total_tokens(self) -> int:
-        """Total tokens used (input + output)."""
-        return self.input_tokens + self.output_tokens
+        """Total tokens used (input + output + cache read).
+
+        Cache read tokens count toward context utilization because
+        they represent tokens that were read from the prompt cache.
+        """
+        return self.input_tokens + self.output_tokens + self.cache_read_tokens
 
     @property
     def context_utilization(self) -> float:
-        """Context window utilization as percentage (0-100)."""
+        """Context window utilization as percentage (0-100).
+
+        Based on total tokens (input + output + cache read) vs context window.
+        """
         if self.context_window <= 0:
             return 0.0
         return (self.total_tokens / self.context_window) * 100
@@ -290,17 +297,21 @@ class ClaudeRunner:
                     # Parse JSON line if parser is available
                     if self._json_parser:
                         text_content = self._json_parser.parse_line(line_content)
+                        # Reset circuit breaker inactivity for ANY valid JSON line,
+                        # not just text content. This ensures "system" init messages
+                        # count as activity to prevent false inactivity triggers.
+                        if self.circuit_breaker and line_content.strip():
+                            trigger = self.circuit_breaker.record_output(
+                                text_content or "[system]"
+                            )
+                            if trigger:
+                                self._cb_triggered = True
+                                self._abort_event.set()
+                                break
                         if text_content:
                             output_lines.append(text_content + "\n")
                             if self.on_output:
                                 self.on_output(text_content)
-                            # Enregistre la sortie dans le circuit breaker
-                            if self.circuit_breaker:
-                                trigger = self.circuit_breaker.record_output(text_content)
-                                if trigger:
-                                    self._cb_triggered = True
-                                    self._abort_event.set()
-                                    break
                     else:
                         # Non-JSON mode: process raw line
                         output_lines.append(line_content)

@@ -129,6 +129,7 @@ class BaseAgent(ABC):
         - {{project_name}}: Project name from config
         - {{language}}: Stack language from config
         - {{test_command}}: Test command from config
+        - {{feature_path}}: Relative path to feature directory (e.g., "docs/features/my-feature")
 
         Args:
             template: The template string with placeholders.
@@ -139,6 +140,16 @@ class BaseAgent(ABC):
         result = template.replace("{{project_name}}", self.config.name)
         result = result.replace("{{language}}", self.config.stack.language)
         result = result.replace("{{test_command}}", self.config.stack.test_command)
+        # Feature path relative to project root
+        if self.feature_dir:
+            try:
+                feature_path = str(self.feature_dir.relative_to(self.project_path))
+            except ValueError:
+                # feature_dir is not relative to project_path, use absolute
+                feature_path = str(self.feature_dir)
+        else:
+            feature_path = ""
+        result = result.replace("{{feature_path}}", feature_path)
         return result
 
     def _apply_placeholders(self, template: str, **kwargs: str) -> str:

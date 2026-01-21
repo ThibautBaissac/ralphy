@@ -72,14 +72,26 @@ ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
         r"Starting (?:Task|Tâche)\s*([\d.]+)",
         r"Implementing (?:Task|Tâche)\s*([\d.]+)",
         r"Now (?:implementing|working on)\s*(?:Task|Tâche)\s*([\d.]+)",
+        # French patterns
+        r"Passons à la Tâche\s*([\d.]+)",
+        r"Je (?:passe|commence) (?:à )?la [Tt]âche\s*([\d.]+)",
+        r"[Tt]âche\s*([\d.]+)\s*(?:en cours|démarrée)",
+        r"Commençons (?:par |avec )?la [Tt]âche\s*([\d.]+)",
+        r"Je marque la tâche\s*([\d.]+).*in_progress",
+        r"pending.*→.*in_progress",  # Edit tool changing status
     ],
     ActivityType.TASK_COMPLETE: [
         r"\*\*Statut\*\*:\s*completed",
         r"[✓✔]\s*T(?:ask|âche)",
         r"Task\s*([\d.]+).*completed",
-        r"Tâche\s*([\d.]+).*complétée",
+        r"Tâche\s*([\d.]+).*(?:complétée|terminée|finie)",
         r"Completed\s*(?:Task|Tâche)\s*([\d.]+)",
         r"status.*completed",
+        # French patterns
+        r"Je marque.*(?:completed|terminée)",
+        r"Tâche\s*([\d.]+).*(?:est |maintenant )?(?:completed|terminée)",
+        r"in_progress.*→.*completed",  # Edit tool changing status
+        r"La tâche\s*([\d.]+).*(?:est )?(?:terminée|complète)",
     ],
     ActivityType.READING_FILE: [
         r"Reading\s+[`'\"]?([^\s`'\"]+)",

@@ -24,7 +24,7 @@ Analyse tous les fichiers dans:
 
 ## Ta mission
 
-Génère un fichier `QA_REPORT.md` dans le répertoire courant contenant:
+Génère un fichier `{{feature_path}}/QA_REPORT.md` contenant:
 
 ### 1. Analyse de la qualité du code
 

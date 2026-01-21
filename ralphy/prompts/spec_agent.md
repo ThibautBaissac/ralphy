@@ -60,9 +60,9 @@ spec/
 
 ## Ta mission
 
-Génère deux fichiers dans le répertoire courant:
+Génère deux fichiers dans le dossier `{{feature_path}}/`:
 
-### 1. SPEC.md
+### 1. {{feature_path}}/SPEC.md
 
 Structure attendue:
 ```markdown
@@ -124,7 +124,7 @@ Structure attendue:
 - Stimulus controllers nécessaires
 ```
 
-### 2. TASKS.md
+### 2. {{feature_path}}/TASKS.md
 
 Structure attendue:
 ```markdown
@@ -168,6 +168,8 @@ Structure attendue:
 ```
 
 ## Instructions
+
+IMPORTANT: Les fichiers SPEC.md et TASKS.md doivent être créés dans le dossier `{{feature_path}}/`, PAS à la racine du projet!
 
 1. Analyse le PRD en profondeur
 2. Identifie les modèles, associations et migrations nécessaires

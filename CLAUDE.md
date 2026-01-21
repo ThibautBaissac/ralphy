@@ -372,6 +372,7 @@ This creates `.ralphy/prompts/` with all 4 agent templates:
 | `{{project_name}}` | Project name | All |
 | `{{language}}` | Tech stack from config | All |
 | `{{test_command}}` | Test command from config | spec, dev |
+| `{{feature_path}}` | Relative path to feature directory (e.g., "docs/features/my-feature") | All |
 | `{{prd_content}}` | PRD.md content | spec |
 | `{{spec_content}}` | SPEC.md content | dev, qa, pr |
 | `{{tasks_content}}` | TASKS.md content | dev |
