@@ -11,6 +11,7 @@ from typing import Callable, Optional
 from ralphy.config import CircuitBreakerConfig
 from ralphy.constants import (
     CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS,
+    CB_QA_PHASE_INACTIVITY_TIMEOUT_SECONDS,
     CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS,
 )
 from ralphy.state import Phase
@@ -235,19 +236,24 @@ class CircuitBreaker:
     def _get_effective_inactivity_timeout(self) -> int:
         """Retourne le timeout d'inactivité effectif selon le contexte.
 
-        Cas spéciaux:
-        - Phase PR: 120s (opérations git plus longues)
+        Cas spéciaux (par ordre de priorité):
         - Test command détecté dans output récent: 300s (tests peuvent être longs)
+        - Phase PR: 120s (opérations git plus longues)
+        - Phase QA: 180s (analyse de code prend du temps)
         """
-        # Phase PR - délai plus long pour les opérations git
-        if self._context.phase == Phase.PR:
-            return CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS
-
-        # Test command en cours - délai beaucoup plus long
+        # Test command en cours - priorité maximale car tests peuvent être longs
         if self._context.test_command:
             recent_text = "".join(self._recent_output)
             if self._context.test_command in recent_text:
                 return CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS
+
+        # Phase PR - délai plus long pour les opérations git
+        if self._context.phase == Phase.PR:
+            return CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS
+
+        # Phase QA - délai plus long pour l'analyse de code
+        if self._context.phase == Phase.QA:
+            return CB_QA_PHASE_INACTIVITY_TIMEOUT_SECONDS
 
         return self._config.inactivity_timeout
 

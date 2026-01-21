@@ -359,6 +359,15 @@ class TestCircuitBreakerSpecialCases:
         effective_timeout = cb._get_effective_inactivity_timeout()
         assert effective_timeout == 120
 
+    def test_qa_phase_180s_timeout(self):
+        """Test que la phase QA a un timeout de 180s."""
+        config = CircuitBreakerConfig(enabled=True, inactivity_timeout=60)
+        context = CircuitBreakerContext(phase=Phase.QA)
+        cb = CircuitBreaker(config=config, context=context)
+
+        effective_timeout = cb._get_effective_inactivity_timeout()
+        assert effective_timeout == 180
+
     def test_test_command_300s_timeout(self):
         """Test que la commande de test a un timeout de 300s."""
         config = CircuitBreakerConfig(enabled=True, inactivity_timeout=60)

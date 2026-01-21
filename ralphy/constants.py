@@ -42,6 +42,7 @@ CB_MAX_ATTEMPTS = 3  # Warnings before circuit trips (opens)
 
 # Context-aware inactivity timeouts
 CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS = 120  # 2 min - Git operations are slow
+CB_QA_PHASE_INACTIVITY_TIMEOUT_SECONDS = 180  # 3 min - QA analysis reads many files
 CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS = 300  # 5 min - Tests can be long
 
 # =============================================================================
