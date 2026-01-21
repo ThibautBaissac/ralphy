@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ralphy.config import (
+    ALLOWED_MODELS,
     ModelConfig,
     ProjectConfig,
     StackConfig,
@@ -14,6 +15,7 @@ from ralphy.config import (
     ensure_specs_dir,
     load_config,
     save_config,
+    validate_model,
 )
 
 
@@ -27,6 +29,37 @@ class TestModelConfig:
         assert config.implementation == "sonnet"
         assert config.qa == "sonnet"
         assert config.pr == "sonnet"
+
+
+class TestValidateModel:
+    """Tests pour validate_model()."""
+
+    def test_valid_alias_models(self):
+        """Test que les alias valides sont acceptés."""
+        assert validate_model("sonnet") == "sonnet"
+        assert validate_model("opus") == "opus"
+        assert validate_model("haiku") == "haiku"
+
+    def test_valid_full_model_names(self):
+        """Test que les noms complets valides sont acceptés."""
+        assert validate_model("claude-sonnet-4-5-20250929") == "claude-sonnet-4-5-20250929"
+        assert validate_model("claude-opus-4-5-20251101") == "claude-opus-4-5-20251101"
+        assert validate_model("claude-haiku-4-5-20251001") == "claude-haiku-4-5-20251001"
+
+    def test_invalid_model_falls_back_to_sonnet(self):
+        """Test qu'un modèle invalide retourne sonnet avec warning."""
+        assert validate_model("invalid-model") == "sonnet"
+        assert validate_model("gpt-4") == "sonnet"
+        assert validate_model("claude-unknown-version") == "sonnet"
+
+    def test_empty_string_falls_back_to_sonnet(self):
+        """Test qu'une chaîne vide retourne sonnet."""
+        assert validate_model("") == "sonnet"
+
+    def test_all_allowed_models_are_valid(self):
+        """Test que tous les modèles de la whitelist sont valides."""
+        for model in ALLOWED_MODELS:
+            assert validate_model(model) == model
 
 
 class TestTimeoutConfig:
@@ -125,3 +158,22 @@ class TestConfigIO:
         specs_dir = ensure_specs_dir(temp_project)
         assert specs_dir.exists()
         assert specs_dir.name == "specs"
+
+    def test_invalid_models_in_config_fallback_to_sonnet(self, temp_project):
+        """Test qu'un modèle invalide dans le fichier config retombe sur sonnet."""
+        config_path = temp_project / ".ralphy" / "config.yaml"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text("""
+models:
+  specification: invalid-model
+  implementation: opus
+  qa: sonnet
+  pr: haiku
+""")
+        config = load_config(temp_project)
+        # Invalid model should fallback to sonnet
+        assert config.models.specification == "sonnet"
+        # Valid models should be kept
+        assert config.models.implementation == "opus"
+        assert config.models.qa == "sonnet"
+        assert config.models.pr == "haiku"

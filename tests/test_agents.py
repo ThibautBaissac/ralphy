@@ -54,6 +54,18 @@ class TestBaseAgent:
         content = agent.read_file("MISSING.md")
         assert content is None
 
+    def test_agent_stores_model_parameter(self, temp_project):
+        """Test que l'agent stocke le paramètre model."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config, model="opus")
+        assert agent.model == "opus"
+
+    def test_agent_model_defaults_to_none(self, temp_project):
+        """Test que l'agent a model=None par défaut."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+        assert agent.model is None
+
 
 class TestSpecAgent:
     """Tests pour SpecAgent."""
