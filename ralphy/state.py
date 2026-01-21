@@ -251,15 +251,12 @@ class StateManager:
             # Fichier corrompu - retourne état par défaut
             return WorkflowState()
 
-    def save(self) -> None:
-        """Sauvegarde l'état dans le fichier avec garantie d'atomicité.
+    def _save_unlocked(self) -> None:
+        """Save state to file. Caller must hold self._lock.
 
-        Thread-safe: serializes state under lock to prevent inconsistent snapshots.
-        Utilise un fichier temporaire + rename pour éviter la corruption
-        en cas de crash pendant l'écriture.
+        Uses atomic write (temp file + rename) to prevent corruption.
         """
-        with self._lock:
-            state_dict = self.state.to_dict()
+        state_dict = self._state.to_dict() if self._state else WorkflowState().to_dict()
 
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -278,58 +275,109 @@ class StateManager:
                 temp_file.unlink(missing_ok=True)
             raise
 
+    def save(self) -> None:
+        """Sauvegarde l'état dans le fichier avec garantie d'atomicité.
+
+        Thread-safe: acquires lock and delegates to _save_unlocked().
+        """
+        with self._lock:
+            self._save_unlocked()
+
     def can_transition(self, new_phase: Phase) -> bool:
-        """Vérifie si la transition vers la nouvelle phase est valide."""
-        return new_phase in VALID_TRANSITIONS.get(self.state.phase, [])
+        """Vérifie si la transition vers la nouvelle phase est valide.
+
+        Thread-safe: acquires lock for consistent read of current phase.
+        """
+        with self._lock:
+            current_phase = self._state.phase if self._state else Phase.IDLE
+            return new_phase in VALID_TRANSITIONS.get(current_phase, [])
 
     def transition(self, new_phase: Phase) -> bool:
-        """Effectue une transition de phase si valide."""
-        if not self.can_transition(new_phase):
-            return False
+        """Effectue une transition de phase si valide.
 
-        self.state.phase = new_phase
-        self.state.status = Status.RUNNING if new_phase not in (
-            Phase.COMPLETED, Phase.FAILED, Phase.REJECTED,
-            Phase.AWAITING_SPEC_VALIDATION, Phase.AWAITING_QA_VALIDATION
-        ) else Status.PENDING
+        Thread-safe: acquires lock for entire check-modify-save operation.
+        """
+        with self._lock:
+            # Ensure state is loaded
+            if self._state is None:
+                self._state = self.load()
 
-        if new_phase == Phase.SPECIFICATION:
-            self.state.started_at = datetime.now().isoformat()
+            # Check transition validity
+            if new_phase not in VALID_TRANSITIONS.get(self._state.phase, []):
+                return False
 
-        self.save()
-        return True
+            self._state.phase = new_phase
+            self._state.status = Status.RUNNING if new_phase not in (
+                Phase.COMPLETED, Phase.FAILED, Phase.REJECTED,
+                Phase.AWAITING_SPEC_VALIDATION, Phase.AWAITING_QA_VALIDATION
+            ) else Status.PENDING
+
+            if new_phase == Phase.SPECIFICATION:
+                self._state.started_at = datetime.now().isoformat()
+
+            self._save_unlocked()
+            return True
 
     def set_running(self) -> None:
-        """Définit le statut comme running."""
-        self.state.status = Status.RUNNING
-        self.save()
+        """Définit le statut comme running.
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.status = Status.RUNNING
+            self._save_unlocked()
 
     def set_completed(self) -> None:
-        """Définit le statut comme completed."""
-        self.state.status = Status.COMPLETED
-        self.save()
+        """Définit le statut comme completed.
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.status = Status.COMPLETED
+            self._save_unlocked()
 
     def set_failed(self, error_message: Optional[str] = None) -> None:
-        """Définit le statut comme failed."""
-        self.state.status = Status.FAILED
-        self.state.phase = Phase.FAILED
-        self.state.error_message = error_message
-        self.save()
+        """Définit le statut comme failed.
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.status = Status.FAILED
+            self._state.phase = Phase.FAILED
+            self._state.error_message = error_message
+            self._save_unlocked()
 
     def update_tasks(self, completed: int, total: int) -> None:
-        """Met à jour le compteur de tâches."""
-        self.state.tasks_completed = completed
-        self.state.tasks_total = total
-        self.save()
+        """Met à jour le compteur de tâches.
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.tasks_completed = completed
+            self._state.tasks_total = total
+            self._save_unlocked()
 
     def mark_phase_completed(self, phase: Phase) -> None:
         """Marque une phase comme complétée pour permettre la reprise.
 
         Cette information est préservée même en cas d'échec pour permettre
         au workflow de reprendre depuis la bonne phase.
+
+        Thread-safe: acquires lock for modify-save operation.
         """
-        self.state.last_completed_phase = phase.value
-        self.save()
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.last_completed_phase = phase.value
+            self._save_unlocked()
 
     def checkpoint_task(self, task_id: str, status: str) -> None:
         """Sauvegarde un checkpoint de tâche.
@@ -337,15 +385,21 @@ class StateManager:
         Args:
             task_id: Identifiant de tâche (ex: "1.8")
             status: "completed" ou "in_progress"
-        """
-        if status == "completed":
-            self.state.last_completed_task_id = task_id
-            self.state.last_in_progress_task_id = None
-        elif status == "in_progress":
-            self.state.last_in_progress_task_id = task_id
 
-        self.state.task_checkpoint_time = datetime.now().isoformat()
-        self.save()
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+
+            if status == "completed":
+                self._state.last_completed_task_id = task_id
+                self._state.last_in_progress_task_id = None
+            elif status == "in_progress":
+                self._state.last_in_progress_task_id = task_id
+
+            self._state.task_checkpoint_time = datetime.now().isoformat()
+            self._save_unlocked()
 
     def get_resume_task_id(self) -> Optional[str]:
         """Retourne l'ID de tâche depuis laquelle reprendre.
@@ -359,23 +413,39 @@ class StateManager:
         return self.state.last_completed_task_id
 
     def clear_task_checkpoints(self) -> None:
-        """Efface les checkpoints de tâche (appelé aux frontières de phase)."""
-        self.state.last_completed_task_id = None
-        self.state.last_in_progress_task_id = None
-        self.state.task_checkpoint_time = None
-        self.save()
+        """Efface les checkpoints de tâche (appelé aux frontières de phase).
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.last_completed_task_id = None
+            self._state.last_in_progress_task_id = None
+            self._state.task_checkpoint_time = None
+            self._save_unlocked()
 
     def reset_circuit_breaker(self) -> None:
-        """Réinitialise le circuit breaker."""
-        self.state.circuit_breaker_state = "closed"
-        self.state.circuit_breaker_attempts = 0
-        self.state.circuit_breaker_last_trigger = None
-        self.save()
+        """Réinitialise le circuit breaker.
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            self._state.circuit_breaker_state = "closed"
+            self._state.circuit_breaker_attempts = 0
+            self._state.circuit_breaker_last_trigger = None
+            self._save_unlocked()
 
     def reset(self) -> None:
-        """Réinitialise l'état."""
-        self._state = WorkflowState()
-        self.save()
+        """Réinitialise l'état.
+
+        Thread-safe: acquires lock for modify-save operation.
+        """
+        with self._lock:
+            self._state = WorkflowState()
+            self._save_unlocked()
 
     def is_idle(self) -> bool:
         """Vérifie si le workflow est au repos."""
