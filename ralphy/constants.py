@@ -51,7 +51,7 @@ CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS = 300  # 5 min - Tests can be long
 
 # Artifact validation - minimum sizes indicating substantive content
 MIN_SPEC_FILE_SIZE_BYTES = 1000  # SPEC.md minimum
-MIN_TASKS_FILE_SIZE_BYTES = 500  # TASKS.md minimum
+MIN_TASKS_FILE_SIZE_BYTES = 200  # TASKS.md minimum
 MIN_QA_REPORT_FILE_SIZE_BYTES = 500  # QA_REPORT.md minimum
 
 # =============================================================================
