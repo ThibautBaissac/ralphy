@@ -1,6 +1,8 @@
 """Gestion de l'état du workflow Ralphy."""
 
 import json
+import os
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -148,13 +150,21 @@ class StateManager:
 
         self.state_file = ralphy_dir / "state.json"
         self._state: Optional[WorkflowState] = None
+        self._lock = threading.Lock()
 
     @property
     def state(self) -> WorkflowState:
-        """Retourne l'état actuel, le charge si nécessaire."""
-        if self._state is None:
-            self._state = self.load()
-        return self._state
+        """Retourne l'état actuel, le charge si nécessaire.
+
+        Thread-safe: uses double-checked locking for lazy initialization.
+        """
+        if self._state is not None:
+            return self._state
+
+        with self._lock:
+            if self._state is None:
+                self._state = self.load()
+            return self._state
 
     def load(self) -> WorkflowState:
         """Charge l'état depuis le fichier."""
@@ -176,16 +186,21 @@ class StateManager:
     def save(self) -> None:
         """Sauvegarde l'état dans le fichier avec garantie d'atomicité.
 
+        Thread-safe: serializes state under lock to prevent inconsistent snapshots.
         Utilise un fichier temporaire + rename pour éviter la corruption
         en cas de crash pendant l'écriture.
         """
+        with self._lock:
+            state_dict = self.state.to_dict()
+
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write to temporary file first
-        temp_file = self.state_file.with_suffix(".json.tmp")
+        # Write to temporary file first (unique per thread to avoid race conditions)
+        unique_suffix = f".{os.getpid()}.{threading.get_ident()}.tmp"
+        temp_file = self.state_file.with_suffix(unique_suffix)
         try:
             with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(self.state.to_dict(), f, indent=2)
+                json.dump(state_dict, f, indent=2)
 
             # Atomic rename (atomic on POSIX filesystems)
             temp_file.replace(self.state_file)

@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -378,3 +379,106 @@ class TestTaskCheckpoints:
 
         assert manager.state.last_completed_task_id is None
         assert manager.state.last_in_progress_task_id is None
+
+
+class TestStateManagerThreadSafety:
+    """Tests for StateManager thread safety."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / ".ralphy").mkdir()
+            yield project_path
+
+    def test_concurrent_state_access(self, temp_project):
+        """Multiple threads accessing state property simultaneously.
+
+        All threads should see the same state object (identity check).
+        """
+        manager = StateManager(temp_project)
+        results = []
+        errors = []
+
+        def access_state():
+            try:
+                for _ in range(100):
+                    state = manager.state
+                    results.append(id(state))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=access_state) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Errors occurred: {errors}"
+        # All accesses should return the same state object
+        assert len(set(results)) == 1, "State object identity varies across threads"
+
+    def test_concurrent_save(self, temp_project):
+        """Multiple threads calling save() simultaneously.
+
+        No corruption should occur - state file should be valid JSON.
+        """
+        manager = StateManager(temp_project)
+        manager.transition(Phase.SPECIFICATION)
+        errors = []
+
+        def save_state(thread_id: int):
+            try:
+                for i in range(50):
+                    manager.state.tasks_completed = thread_id * 100 + i
+                    manager.save()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=save_state, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Errors occurred: {errors}"
+
+        # Verify state file is valid JSON and not corrupted
+        with open(manager.state_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        assert "phase" in data
+        assert "status" in data
+
+    def test_concurrent_transition(self, temp_project):
+        """Multiple threads attempting transitions simultaneously.
+
+        State must remain consistent - only valid transitions should occur.
+        """
+        manager = StateManager(temp_project)
+        successful_transitions = []
+        errors = []
+        lock = threading.Lock()
+
+        def attempt_transition():
+            try:
+                # Try to transition from IDLE to SPECIFICATION
+                result = manager.transition(Phase.SPECIFICATION)
+                with lock:
+                    successful_transitions.append(result)
+            except Exception as e:
+                with lock:
+                    errors.append(e)
+
+        # All threads try to transition at once
+        threads = [threading.Thread(target=attempt_transition) for _ in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert not errors, f"Errors occurred: {errors}"
+        # State should be in SPECIFICATION
+        assert manager.state.phase == Phase.SPECIFICATION
+        # At least one transition should have succeeded
+        assert any(successful_transitions)

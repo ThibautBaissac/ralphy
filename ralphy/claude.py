@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
+from io import StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -253,7 +254,7 @@ class ClaudeRunner:
             return
 
         stdout_fd = process.stdout.fileno()
-        buffer = ""
+        buffer = StringIO()
 
         while not self._abort_event.is_set():
             try:
@@ -280,13 +281,14 @@ class ClaudeRunner:
                     # EOF atteint
                     break
 
-                buffer += chunk
+                buffer.write(chunk)
 
                 # Si on a une ligne complète, la traiter
                 if chunk == "\n":
+                    line_content = buffer.getvalue()
                     # Parse JSON line if parser is available
                     if self._json_parser:
-                        text_content = self._json_parser.parse_line(buffer)
+                        text_content = self._json_parser.parse_line(line_content)
                         if text_content:
                             output_lines.append(text_content + "\n")
                             if self.on_output:
@@ -300,35 +302,36 @@ class ClaudeRunner:
                                     break
                     else:
                         # Non-JSON mode: process raw line
-                        output_lines.append(buffer)
+                        output_lines.append(line_content)
                         if self.on_output:
-                            self.on_output(buffer)
+                            self.on_output(line_content)
                         # Enregistre la sortie dans le circuit breaker
                         if self.circuit_breaker:
-                            trigger = self.circuit_breaker.record_output(buffer)
+                            trigger = self.circuit_breaker.record_output(line_content)
                             if trigger:
                                 self._cb_triggered = True
                                 self._abort_event.set()
                                 break
 
-                    buffer = ""
+                    buffer = StringIO()
 
             except (IOError, OSError, ValueError):
                 # ValueError can occur if the file descriptor is closed
                 break
 
         # Flush du buffer restant
-        if buffer and not self._abort_event.is_set():
+        if buffer.tell() > 0 and not self._abort_event.is_set():
+            remaining = buffer.getvalue()
             if self._json_parser:
-                text_content = self._json_parser.parse_line(buffer)
+                text_content = self._json_parser.parse_line(remaining)
                 if text_content:
                     output_lines.append(text_content)
                     if self.on_output:
                         self.on_output(text_content)
             else:
-                output_lines.append(buffer)
+                output_lines.append(remaining)
                 if self.on_output:
-                    self.on_output(buffer)
+                    self.on_output(remaining)
 
     def _cb_monitor_task_stagnation(self) -> None:
         """Thread daemon qui vérifie la stagnation des tâches.
@@ -472,6 +475,12 @@ class ClaudeRunner:
             if cb_monitor_thread and cb_monitor_thread.is_alive():
                 cb_monitor_thread.join(timeout=1)
             self._clear_pid()
+            # Explicit stdout close to prevent resource leak
+            if self._process and self._process.stdout:
+                try:
+                    self._process.stdout.close()
+                except Exception:
+                    pass
             self._process = None
 
     def abort(self) -> None:
