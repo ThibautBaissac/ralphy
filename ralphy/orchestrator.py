@@ -69,6 +69,9 @@ class Orchestrator:
                 self.logger.task_start(f"Tâche {task_id}: {task_name}")
             elif task_id:
                 self.logger.task_start(f"Tâche {task_id}")
+            # Checkpoint task as in_progress
+            if task_id:
+                self.state_manager.checkpoint_task(task_id, "in_progress")
         elif event_type == "complete":
             if task_name:
                 self.logger.task_complete(f"Tâche {task_id}: {task_name}")
@@ -76,6 +79,12 @@ class Orchestrator:
                 self.logger.task_complete(f"Tâche {task_id}")
             else:
                 self.logger.task_complete("Tâche complétée")
+            # Checkpoint task as completed and update task counter
+            if task_id:
+                self.state_manager.checkpoint_task(task_id, "completed")
+                agent = DevAgent(project_path=self.project_path, config=self.config)
+                completed, total = agent.count_task_status()
+                self.state_manager.update_tasks(completed, total)
 
     def _spec_artifacts_valid(self) -> bool:
         """Vérifie si les artéfacts de la phase SPECIFICATION sont valides.
@@ -329,6 +338,29 @@ class Orchestrator:
         if self.state_manager.is_running():
             raise WorkflowError("Un workflow est déjà en cours")
 
+    def _get_implementation_resume_task(self) -> str | None:
+        """Détermine si l'implémentation doit reprendre depuis une tâche spécifique.
+
+        Returns:
+            ID de la tâche depuis laquelle reprendre, ou None pour démarrer du début.
+        """
+        resume_task_id = self.state_manager.get_resume_task_id()
+        if not resume_task_id:
+            return None
+
+        agent = DevAgent(project_path=self.project_path, config=self.config)
+        next_task = agent.get_next_pending_task_after(resume_task_id)
+
+        if next_task:
+            return next_task
+
+        # All tasks might be completed - check before returning resume_task_id
+        completed, total = agent.count_task_status()
+        if completed >= total:
+            return None
+
+        return resume_task_id
+
     def _run_specification_phase(self) -> bool:
         """Exécute la phase de spécification."""
         self.logger.phase("SPECIFICATION")
@@ -353,6 +385,9 @@ class Orchestrator:
             # Compte les tâches générées
             tasks_count = agent.count_tasks()
             self.state_manager.update_tasks(0, tasks_count)
+
+            # Clear any previous task checkpoints from a prior implementation
+            self.state_manager.clear_task_checkpoints()
 
             return True
         finally:
@@ -379,6 +414,11 @@ class Orchestrator:
         self.logger.phase("IMPLEMENTATION")
         self._safe_transition(Phase.IMPLEMENTATION)
 
+        # Determine if we should resume from a specific task
+        resume_task_id = self._get_implementation_resume_task()
+        if resume_task_id:
+            self.logger.info(f"Reprise de l'implémentation depuis la tâche {resume_task_id}")
+
         # Récupère le nombre de tâches pour la progress bar
         completed_tasks = self.state_manager.state.tasks_completed
         total_tasks = self.state_manager.state.tasks_total
@@ -396,7 +436,10 @@ class Orchestrator:
                 model=self.config.models.implementation,
             )
 
-            result = agent.run(timeout=self.config.timeouts.implementation)
+            result = agent.run(
+                timeout=self.config.timeouts.implementation,
+                start_from_task=resume_task_id,
+            )
 
             if self._aborted:
                 return False

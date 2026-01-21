@@ -72,6 +72,10 @@ class WorkflowState:
     circuit_breaker_last_trigger: Optional[str] = None
     # Resume support: tracks the last successfully completed phase
     last_completed_phase: Optional[str] = None
+    # Per-task checkpoint fields for implementation resume
+    last_completed_task_id: Optional[str] = None  # ex: "1.7"
+    last_in_progress_task_id: Optional[str] = None  # ex: "1.8" (interrupted)
+    task_checkpoint_time: Optional[str] = None  # ISO timestamp
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkflowState":
@@ -87,6 +91,9 @@ class WorkflowState:
             circuit_breaker_attempts=data.get("circuit_breaker_attempts", 0),
             circuit_breaker_last_trigger=data.get("circuit_breaker_last_trigger"),
             last_completed_phase=data.get("last_completed_phase"),
+            last_completed_task_id=data.get("last_completed_task_id"),
+            last_in_progress_task_id=data.get("last_in_progress_task_id"),
+            task_checkpoint_time=data.get("task_checkpoint_time"),
         )
 
     def to_dict(self) -> dict:
@@ -102,6 +109,9 @@ class WorkflowState:
             "circuit_breaker_attempts": self.circuit_breaker_attempts,
             "circuit_breaker_last_trigger": self.circuit_breaker_last_trigger,
             "last_completed_phase": self.last_completed_phase,
+            "last_completed_task_id": self.last_completed_task_id,
+            "last_in_progress_task_id": self.last_in_progress_task_id,
+            "task_checkpoint_time": self.task_checkpoint_time,
         }
 
 
@@ -221,6 +231,40 @@ class StateManager:
         au workflow de reprendre depuis la bonne phase.
         """
         self.state.last_completed_phase = phase.value
+        self.save()
+
+    def checkpoint_task(self, task_id: str, status: str) -> None:
+        """Sauvegarde un checkpoint de tâche.
+
+        Args:
+            task_id: Identifiant de tâche (ex: "1.8")
+            status: "completed" ou "in_progress"
+        """
+        if status == "completed":
+            self.state.last_completed_task_id = task_id
+            self.state.last_in_progress_task_id = None
+        elif status == "in_progress":
+            self.state.last_in_progress_task_id = task_id
+
+        self.state.task_checkpoint_time = datetime.now().isoformat()
+        self.save()
+
+    def get_resume_task_id(self) -> Optional[str]:
+        """Retourne l'ID de tâche depuis laquelle reprendre.
+
+        - Si in_progress existe: reprendre cette tâche (la refaire)
+        - Sinon si completed existe: reprendre la suivante
+        - Sinon: None (démarrer du début)
+        """
+        if self.state.last_in_progress_task_id:
+            return self.state.last_in_progress_task_id
+        return self.state.last_completed_task_id
+
+    def clear_task_checkpoints(self) -> None:
+        """Efface les checkpoints de tâche (appelé aux frontières de phase)."""
+        self.state.last_completed_task_id = None
+        self.state.last_in_progress_task_id = None
+        self.state.task_checkpoint_time = None
         self.save()
 
     def reset_circuit_breaker(self) -> None:

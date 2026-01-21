@@ -189,3 +189,107 @@ class TestResumeLogic:
         assert orchestrator._should_skip_phase(Phase.QA, Phase.QA) is False
         assert orchestrator._should_skip_phase(Phase.AWAITING_QA_VALIDATION, Phase.QA) is False
         assert orchestrator._should_skip_phase(Phase.PR, Phase.QA) is False
+
+
+class TestTaskLevelResume:
+    """Tests pour la reprise au niveau des tâches."""
+
+    @pytest.fixture
+    def temp_project_with_tasks(self):
+        """Crée un projet avec specs et tâches partiellement complétées."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / "PRD.md").write_text("# Test PRD\n" + "x" * 500)
+            (project_path / ".ralphy").mkdir()
+            (project_path / "specs").mkdir()
+            (project_path / "specs" / "SPEC.md").write_text("# Spec\n" + "x" * 1500)
+            (project_path / "specs" / "TASKS.md").write_text("""# Tâches
+
+### Tâche 1.1: [Migration - Setup]
+- **Statut**: completed
+
+### Tâche 1.2: [Model - User]
+- **Statut**: completed
+
+### Tâche 1.3: [Controller - Users]
+- **Statut**: pending
+
+### Tâche 1.4: [View - Users]
+- **Statut**: pending
+""")
+            yield project_path
+
+    def test_get_implementation_resume_task_with_completed_checkpoint(
+        self, temp_project_with_tasks
+    ):
+        """Test de reprise depuis un checkpoint de tâche complétée."""
+        state_manager = StateManager(temp_project_with_tasks)
+        state_manager.checkpoint_task("1.2", "completed")
+
+        orchestrator = Orchestrator(temp_project_with_tasks)
+        resume_task = orchestrator._get_implementation_resume_task()
+
+        # Should resume from 1.3 (first pending after 1.2)
+        assert resume_task == "1.3"
+
+    def test_get_implementation_resume_task_with_in_progress_checkpoint(
+        self, temp_project_with_tasks
+    ):
+        """Test de reprise depuis un checkpoint de tâche in_progress."""
+        # Update TASKS.md to have 1.3 as in_progress
+        (temp_project_with_tasks / "specs" / "TASKS.md").write_text("""# Tâches
+
+### Tâche 1.1: [Migration - Setup]
+- **Statut**: completed
+
+### Tâche 1.2: [Model - User]
+- **Statut**: completed
+
+### Tâche 1.3: [Controller - Users]
+- **Statut**: in_progress
+
+### Tâche 1.4: [View - Users]
+- **Statut**: pending
+""")
+        state_manager = StateManager(temp_project_with_tasks)
+        state_manager.checkpoint_task("1.2", "completed")
+        state_manager.checkpoint_task("1.3", "in_progress")
+
+        orchestrator = Orchestrator(temp_project_with_tasks)
+        resume_task = orchestrator._get_implementation_resume_task()
+
+        # Should resume from 1.3 (the in_progress task)
+        assert resume_task == "1.3"
+
+    def test_get_implementation_resume_task_returns_none_without_checkpoint(
+        self, temp_project_with_tasks
+    ):
+        """Test que _get_implementation_resume_task retourne None sans checkpoint."""
+        orchestrator = Orchestrator(temp_project_with_tasks)
+        resume_task = orchestrator._get_implementation_resume_task()
+
+        assert resume_task is None
+
+    def test_get_implementation_resume_task_returns_none_when_all_completed(
+        self, temp_project_with_tasks
+    ):
+        """Test que _get_implementation_resume_task retourne None si toutes complétées."""
+        # Update TASKS.md to have all completed
+        (temp_project_with_tasks / "specs" / "TASKS.md").write_text("""# Tâches
+
+### Tâche 1.1: [Migration - Setup]
+- **Statut**: completed
+
+### Tâche 1.2: [Model - User]
+- **Statut**: completed
+""")
+        state_manager = StateManager(temp_project_with_tasks)
+        state_manager.checkpoint_task("1.2", "completed")
+
+        orchestrator = Orchestrator(temp_project_with_tasks)
+        resume_task = orchestrator._get_implementation_resume_task()
+
+        # All tasks completed, no resume needed
+        assert resume_task is None

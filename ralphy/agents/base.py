@@ -69,7 +69,10 @@ class BaseAgent(ABC):
         return None
 
     def run(
-        self, timeout: Optional[int] = None, phase: Optional[Phase] = None
+        self,
+        timeout: Optional[int] = None,
+        phase: Optional[Phase] = None,
+        **prompt_kwargs,
     ) -> AgentResult:
         """Exécute l'agent avec retry automatique et circuit breaker.
 
@@ -77,6 +80,7 @@ class BaseAgent(ABC):
             timeout: Timeout en secondes. Si non spécifié, utilise
                      config.timeouts.agent comme fallback.
             phase: Phase du workflow pour le contexte du circuit breaker.
+            **prompt_kwargs: Arguments additionnels passés à build_prompt().
 
         Returns:
             AgentResult avec le résultat de l'exécution.
@@ -88,7 +92,7 @@ class BaseAgent(ABC):
         """
         self.logger.agent(self.name, "started")
 
-        prompt = self.build_prompt()
+        prompt = self.build_prompt(**prompt_kwargs)
         if not prompt:
             return AgentResult(
                 success=False,
