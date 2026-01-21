@@ -54,12 +54,50 @@ class BaseAgent(ABC):
         pass
 
     def load_prompt_template(self) -> str:
-        """Charge le template de prompt depuis le package."""
+        """Charge le template de prompt depuis le projet ou le package.
+
+        Ordre de priorité:
+        1. .ralphy/prompts/{prompt_file} (custom du projet)
+        2. ralphy/prompts/{prompt_file} (défaut du package)
+
+        Les prompts custom sont validés avant utilisation. S'ils sont invalides,
+        le template par défaut est utilisé avec un warning.
+        """
+        # 1. Cherche dans le projet
+        local_path = self.project_path / ".ralphy" / "prompts" / self.prompt_file
+        if local_path.exists():
+            content = local_path.read_text(encoding="utf-8")
+            if self._validate_prompt(content):
+                return content
+            self.logger.warn(f"Custom prompt {self.prompt_file} invalid, using default")
+
+        # 2. Fallback au package
         try:
             return resources.files("ralphy.prompts").joinpath(self.prompt_file).read_text(encoding="utf-8")
         except (FileNotFoundError, TypeError):
             self.logger.error(f"Template {self.prompt_file} non trouvé")
             return ""
+
+    def _validate_prompt(self, content: str) -> bool:
+        """Valide qu'un prompt custom est utilisable.
+
+        Vérifications:
+        - Contenu non vide et minimum 100 caractères
+        - Contient l'instruction EXIT_SIGNAL (obligatoire pour tous les agents)
+
+        Args:
+            content: Contenu du prompt à valider.
+
+        Returns:
+            True si le prompt est valide, False sinon.
+        """
+        if not content or len(content) < 100:
+            self.logger.warn("Custom prompt is empty or too short (< 100 chars)")
+            return False
+        if "EXIT_SIGNAL" not in content:
+            self.logger.warn("Custom prompt missing EXIT_SIGNAL instruction")
+            return False
+        return True
 
     def read_file(self, filename: str) -> Optional[str]:
         """Lit un fichier du projet."""

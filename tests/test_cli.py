@@ -209,3 +209,105 @@ class TestVersionOption:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
         assert "ralphy" in result.output.lower()
+
+
+class TestInitPromptsCommand:
+    """Tests for the init-prompts command."""
+
+    def test_init_prompts_creates_directory(self, runner, tmp_path):
+        """Test that init-prompts creates .ralphy/prompts/ directory."""
+        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+        assert result.exit_code == 0
+
+        prompts_dir = tmp_path / ".ralphy" / "prompts"
+        assert prompts_dir.exists()
+        assert prompts_dir.is_dir()
+
+    def test_init_prompts_copies_all_prompts(self, runner, tmp_path):
+        """Test that init-prompts copies all 4 prompt files."""
+        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+        assert result.exit_code == 0
+
+        prompts_dir = tmp_path / ".ralphy" / "prompts"
+        expected_files = ["spec_agent.md", "dev_agent.md", "qa_agent.md", "pr_agent.md"]
+
+        for filename in expected_files:
+            prompt_file = prompts_dir / filename
+            assert prompt_file.exists(), f"{filename} should exist"
+            content = prompt_file.read_text()
+            # Should have header with placeholder documentation
+            assert "CUSTOM PROMPT TEMPLATE" in content
+            assert "Placeholder" in content
+            # Should have EXIT_SIGNAL (from original content)
+            assert "EXIT_SIGNAL" in content
+
+    def test_init_prompts_does_not_overwrite_without_force(self, runner, tmp_path):
+        """Test that init-prompts doesn't overwrite existing files without --force."""
+        # Create directory and one existing file
+        prompts_dir = tmp_path / ".ralphy" / "prompts"
+        prompts_dir.mkdir(parents=True)
+        existing_content = "# My custom prompt EXIT_SIGNAL preserved"
+        (prompts_dir / "spec_agent.md").write_text(existing_content)
+
+        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+        assert result.exit_code == 0
+
+        # spec_agent.md should not be overwritten
+        assert (prompts_dir / "spec_agent.md").read_text() == existing_content
+
+        # Other files should be created
+        assert (prompts_dir / "dev_agent.md").exists()
+        assert (prompts_dir / "qa_agent.md").exists()
+        assert (prompts_dir / "pr_agent.md").exists()
+
+        # Output should mention skipped file
+        assert "skipping" in result.output.lower() or "skip" in result.output.lower()
+
+    def test_init_prompts_force_overwrites(self, runner, tmp_path):
+        """Test that init-prompts --force overwrites existing files."""
+        # Create directory and one existing file
+        prompts_dir = tmp_path / ".ralphy" / "prompts"
+        prompts_dir.mkdir(parents=True)
+        existing_content = "# My custom prompt that will be overwritten"
+        (prompts_dir / "spec_agent.md").write_text(existing_content)
+
+        result = runner.invoke(main, ["init-prompts", "--force", str(tmp_path)])
+        assert result.exit_code == 0
+
+        # spec_agent.md should be overwritten
+        new_content = (prompts_dir / "spec_agent.md").read_text()
+        assert new_content != existing_content
+        assert "CUSTOM PROMPT TEMPLATE" in new_content
+
+    def test_init_prompts_default_path(self, runner, tmp_path, monkeypatch):
+        """Test that init-prompts uses current directory if no path given."""
+        # Change to tmp_path
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(main, ["init-prompts"])
+        assert result.exit_code == 0
+
+        prompts_dir = tmp_path / ".ralphy" / "prompts"
+        assert prompts_dir.exists()
+        assert (prompts_dir / "spec_agent.md").exists()
+
+    def test_init_prompts_adds_header_with_placeholders(self, runner, tmp_path):
+        """Test that init-prompts adds header documenting placeholders."""
+        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+        assert result.exit_code == 0
+
+        # Check spec_agent.md has spec-specific placeholders
+        spec_content = (tmp_path / ".ralphy" / "prompts" / "spec_agent.md").read_text()
+        assert "{{prd_content}}" in spec_content
+        assert "{{project_name}}" in spec_content
+
+        # Check dev_agent.md has dev-specific placeholders
+        dev_content = (tmp_path / ".ralphy" / "prompts" / "dev_agent.md").read_text()
+        assert "{{spec_content}}" in dev_content
+        assert "{{tasks_content}}" in dev_content
+        assert "{{resume_instruction}}" in dev_content
+
+        # Check pr_agent.md has pr-specific placeholders
+        pr_content = (tmp_path / ".ralphy" / "prompts" / "pr_agent.md").read_text()
+        assert "{{branch_name}}" in pr_content
+        assert "{{qa_report}}" in pr_content

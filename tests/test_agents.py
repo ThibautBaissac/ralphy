@@ -16,7 +16,7 @@ class ConcreteAgent(BaseAgent):
     """Agent concret pour les tests."""
 
     name = "test-agent"
-    prompt_file = "test.md"
+    prompt_file = "spec_agent.md"  # Use real prompt file for fallback tests
 
     def build_prompt(self) -> str:
         return "Test prompt"
@@ -280,3 +280,142 @@ class TestDevAgentResume:
         # After 1.1, next non-completed is 1.2 (in_progress)
         next_task = agent.get_next_pending_task_after("1.1")
         assert next_task == "1.2"
+
+
+class TestCustomPromptLoading:
+    """Tests pour le chargement des prompts personnalisés."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / "PRD.md").write_text("# Test PRD")
+            yield project_path
+
+    def test_loads_custom_prompt_when_present(self, temp_project):
+        """Test que load_prompt_template charge un prompt custom valide."""
+        # Crée un prompt custom valide
+        prompts_dir = temp_project / ".ralphy" / "prompts"
+        prompts_dir.mkdir(parents=True)
+
+        custom_content = """# Custom Spec Agent Prompt
+
+This is a custom prompt for the spec agent.
+It must be at least 100 characters long to pass validation.
+It also needs to contain the EXIT_SIGNAL instruction.
+
+When done, output EXIT_SIGNAL: true to indicate completion.
+"""
+        (prompts_dir / "spec_agent.md").write_text(custom_content)
+
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+        loaded = agent.load_prompt_template()
+
+        assert loaded == custom_content
+
+    def test_falls_back_to_default_when_no_custom(self, temp_project):
+        """Test que load_prompt_template utilise le défaut si pas de custom."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+        loaded = agent.load_prompt_template()
+
+        # Should load from package (spec_agent.md exists in ralphy/prompts/)
+        assert len(loaded) > 0
+        assert "EXIT_SIGNAL" in loaded
+
+    def test_validates_custom_prompt_has_exit_signal(self, temp_project):
+        """Test que le prompt custom est rejeté si EXIT_SIGNAL manque."""
+        prompts_dir = temp_project / ".ralphy" / "prompts"
+        prompts_dir.mkdir(parents=True)
+
+        # Prompt sans EXIT_SIGNAL (mais assez long)
+        invalid_content = """# Custom Spec Agent Prompt
+
+This is a custom prompt that is missing the required exit signal.
+It has more than 100 characters but the validation should fail
+because it doesn't tell the agent how to signal completion.
+"""
+        (prompts_dir / "spec_agent.md").write_text(invalid_content)
+
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+        loaded = agent.load_prompt_template()
+
+        # Should fallback to default (from package)
+        assert "EXIT_SIGNAL" in loaded
+        assert loaded != invalid_content
+
+    def test_validates_custom_prompt_not_empty(self, temp_project):
+        """Test que le prompt custom est rejeté si vide ou trop court."""
+        prompts_dir = temp_project / ".ralphy" / "prompts"
+        prompts_dir.mkdir(parents=True)
+
+        # Prompt trop court
+        short_content = "Short prompt EXIT_SIGNAL"
+        (prompts_dir / "spec_agent.md").write_text(short_content)
+
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+        loaded = agent.load_prompt_template()
+
+        # Should fallback to default
+        assert len(loaded) > 100
+        assert loaded != short_content
+
+    def test_validates_custom_prompt_empty_file(self, temp_project):
+        """Test que le prompt custom est rejeté si fichier vide."""
+        prompts_dir = temp_project / ".ralphy" / "prompts"
+        prompts_dir.mkdir(parents=True)
+
+        (prompts_dir / "spec_agent.md").write_text("")
+
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+        loaded = agent.load_prompt_template()
+
+        # Should fallback to default
+        assert len(loaded) > 0
+
+
+class TestValidatePrompt:
+    """Tests unitaires pour _validate_prompt."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_valid_prompt_passes(self, temp_project):
+        """Test qu'un prompt valide passe la validation."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        valid_content = "A" * 100 + " EXIT_SIGNAL"
+        assert agent._validate_prompt(valid_content) is True
+
+    def test_short_prompt_fails(self, temp_project):
+        """Test qu'un prompt trop court échoue."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        short_content = "Short EXIT_SIGNAL"
+        assert agent._validate_prompt(short_content) is False
+
+    def test_missing_exit_signal_fails(self, temp_project):
+        """Test qu'un prompt sans EXIT_SIGNAL échoue."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        no_signal = "A" * 200  # Long enough but no EXIT_SIGNAL
+        assert agent._validate_prompt(no_signal) is False
+
+    def test_empty_prompt_fails(self, temp_project):
+        """Test qu'un prompt vide échoue."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        assert agent._validate_prompt("") is False
+        assert agent._validate_prompt(None) is False

@@ -1,6 +1,7 @@
 """Interface CLI pour Ralphy."""
 
 import sys
+from importlib import resources
 from pathlib import Path
 
 import click
@@ -18,6 +19,72 @@ from ralphy.config import load_config
 from ralphy.logger import get_logger
 from ralphy.orchestrator import Orchestrator
 from ralphy.state import Phase, StateManager
+
+
+# Liste des fichiers de prompts à copier
+PROMPT_FILES = [
+    "spec_agent.md",
+    "dev_agent.md",
+    "qa_agent.md",
+    "pr_agent.md",
+]
+
+
+def _generate_prompt_header(prompt_file: str) -> str:
+    """Génère un header documentant les placeholders disponibles pour un prompt.
+
+    Args:
+        prompt_file: Nom du fichier de prompt (ex: spec_agent.md)
+
+    Returns:
+        Header markdown avec documentation des placeholders.
+    """
+    # Placeholders communs à tous les prompts
+    common_placeholders = """
+| Placeholder | Description |
+|-------------|-------------|
+| `{{project_name}}` | Nom du projet |
+| `{{language}}` | Stack technique (depuis config.yaml) |
+| `{{test_command}}` | Commande de test (depuis config.yaml) |
+"""
+
+    # Placeholders spécifiques par agent
+    specific_placeholders = {
+        "spec_agent.md": """| `{{prd_content}}` | Contenu de PRD.md |
+""",
+        "dev_agent.md": """| `{{spec_content}}` | Contenu de SPEC.md |
+| `{{tasks_content}}` | Contenu de TASKS.md |
+| `{{resume_instruction}}` | Instructions de reprise (vide si nouvelle session) |
+""",
+        "qa_agent.md": """| `{{spec_content}}` | Contenu de SPEC.md |
+""",
+        "pr_agent.md": """| `{{branch_name}}` | Nom de la branche à créer |
+| `{{qa_report}}` | Contenu du rapport QA |
+| `{{spec_content}}` | Contenu de SPEC.md |
+""",
+    }
+
+    agent_name = prompt_file.replace("_agent.md", "").replace("_", " ").title()
+    specific = specific_placeholders.get(prompt_file, "")
+
+    return f"""<!--
+=============================================================================
+CUSTOM PROMPT TEMPLATE - {agent_name} Agent
+=============================================================================
+
+Ce fichier est un template de prompt personnalisé pour Ralphy.
+Modifiez-le pour adapter le comportement de l'agent à votre stack/projet.
+
+IMPORTANT: Ce prompt DOIT contenir l'instruction "EXIT_SIGNAL" pour que
+l'agent puisse signaler la fin de son exécution.
+
+Placeholders disponibles (remplacés automatiquement à l'exécution):
+{common_placeholders}{specific}
+Documentation: https://github.com/your-org/ralphy#custom-prompts
+=============================================================================
+-->
+
+"""
 
 
 console = Console()
@@ -176,6 +243,67 @@ def reset(project_path: str = None):
     if click.confirm("Réinitialiser l'état du workflow ?", default=False):
         state_manager.reset()
         logger.info("État réinitialisé")
+
+
+@main.command("init-prompts")
+@click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True), required=False)
+@click.option("--force", is_flag=True, help="Écrase les prompts existants")
+def init_prompts(project_path: str = None, force: bool = False):
+    """Initialise les templates de prompts personnalisés.
+
+    Copie les templates de prompts par défaut dans .ralphy/prompts/ du projet.
+    Ces templates peuvent ensuite être modifiés pour adapter Ralphy à votre stack.
+
+    PROJECT_PATH: Chemin vers le projet (défaut: répertoire courant)
+
+    Utilisez --force pour écraser les prompts existants.
+    """
+    project = Path(project_path) if project_path else Path.cwd()
+    logger = get_logger()
+
+    # Crée le répertoire .ralphy/prompts/ s'il n'existe pas
+    prompts_dir = project / ".ralphy" / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+
+    copied = 0
+    skipped = 0
+
+    for prompt_file in PROMPT_FILES:
+        dest_path = prompts_dir / prompt_file
+
+        # Skip si fichier existe et pas --force
+        if dest_path.exists() and not force:
+            logger.warn(f"Skipping {prompt_file} (exists, use --force to overwrite)")
+            skipped += 1
+            continue
+
+        # Charge le contenu depuis le package
+        try:
+            original_content = resources.files("ralphy.prompts").joinpath(prompt_file).read_text(encoding="utf-8")
+        except (FileNotFoundError, TypeError):
+            logger.error(f"Template {prompt_file} not found in package")
+            continue
+
+        # Ajoute le header documentant les placeholders
+        header = _generate_prompt_header(prompt_file)
+        content = header + original_content
+
+        # Écrit le fichier
+        dest_path.write_text(content, encoding="utf-8")
+        logger.info(f"Created {prompt_file}")
+        copied += 1
+
+    # Résumé
+    console.print()
+    if copied > 0:
+        console.print(f"[green]✓[/green] {copied} prompt(s) copied to {prompts_dir}")
+    if skipped > 0:
+        console.print(f"[yellow]![/yellow] {skipped} prompt(s) skipped (use --force to overwrite)")
+
+    if copied > 0:
+        console.print()
+        console.print("[dim]Edit these files to customize Ralphy for your project.[/dim]")
+        console.print("[dim]Remember: prompts must contain EXIT_SIGNAL instruction.[/dim]")
 
 
 if __name__ == "__main__":

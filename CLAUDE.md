@@ -60,6 +60,9 @@ ralphy abort /path/to/project
 
 # Reset workflow state
 ralphy reset /path/to/project
+
+# Initialize custom prompt templates
+ralphy init-prompts /path/to/project
 ```
 
 ### Development Tools
@@ -250,6 +253,46 @@ models:
 
 Supported values: `sonnet`, `opus`, `haiku`, or full model names like `claude-sonnet-4-5-20250929`.
 Default: All phases use `sonnet` if not specified.
+
+### Custom Prompt Templates
+
+Ralphy supports custom prompts to adapt agent behavior for your tech stack. Prompts are loaded with priority:
+1. `.ralphy/prompts/{agent}.md` (project-specific)
+2. `ralphy/prompts/{agent}.md` (package defaults)
+
+**Initialize custom prompts:**
+```bash
+# Copy default prompts to your project
+ralphy init-prompts /path/to/project
+
+# Overwrite existing custom prompts
+ralphy init-prompts --force /path/to/project
+```
+
+This creates `.ralphy/prompts/` with all 4 agent templates:
+- `spec_agent.md` - Specification generation
+- `dev_agent.md` - Implementation
+- `qa_agent.md` - Quality assurance
+- `pr_agent.md` - Pull request creation
+
+**Available placeholders** (replaced at runtime):
+
+| Placeholder | Description | Agents |
+|-------------|-------------|--------|
+| `{{project_name}}` | Project name | All |
+| `{{language}}` | Tech stack from config | All |
+| `{{test_command}}` | Test command from config | spec, dev |
+| `{{prd_content}}` | PRD.md content | spec |
+| `{{spec_content}}` | SPEC.md content | dev, qa, pr |
+| `{{tasks_content}}` | TASKS.md content | dev |
+| `{{resume_instruction}}` | Resume instructions | dev |
+| `{{branch_name}}` | Branch name | pr |
+| `{{qa_report}}` | QA report content | pr |
+
+**Requirements for custom prompts:**
+- Must contain `EXIT_SIGNAL` instruction (required for agent completion detection)
+- Must be at least 100 characters long
+- Invalid prompts fall back to defaults with a warning
 
 ### Adding Circuit Breaker Trigger
 1. Add trigger type to `TriggerType` enum in `circuit_breaker.py`
