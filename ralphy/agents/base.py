@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Callable, ClassVar, Optional
 from ralphy.circuit_breaker import CircuitBreaker, CircuitBreakerContext
 from ralphy.claude import ClaudeResponse, ClaudeRunner
 from ralphy.config import ProjectConfig
+from ralphy.constants import MIN_PROMPT_SIZE_CHARS
 from ralphy.logger import get_logger
 from ralphy.state import Phase
 
@@ -163,7 +164,7 @@ class BaseAgent(ABC):
         """Valide qu'un prompt custom est utilisable.
 
         Vérifications:
-        - Contenu non vide et minimum 100 caractères
+        - Contenu non vide et minimum MIN_PROMPT_SIZE_CHARS caractères
         - Contient l'instruction EXIT_SIGNAL (obligatoire pour tous les agents)
 
         Args:
@@ -172,8 +173,8 @@ class BaseAgent(ABC):
         Returns:
             True si le prompt est valide, False sinon.
         """
-        if not content or len(content) < 100:
-            self.logger.warn("Custom prompt is empty or too short (< 100 chars)")
+        if not content or len(content) < MIN_PROMPT_SIZE_CHARS:
+            self.logger.warn(f"Custom prompt is empty or too short (< {MIN_PROMPT_SIZE_CHARS} chars)")
             return False
         if "EXIT_SIGNAL" not in content:
             self.logger.warn("Custom prompt missing EXIT_SIGNAL instruction")

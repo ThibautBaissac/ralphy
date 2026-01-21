@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm
 
+from ralphy.constants import SPEC_PREVIEW_LINES
 from ralphy.logger import get_logger
 
 
@@ -78,7 +79,7 @@ class HumanValidator:
         if spec_path.exists():
             content = spec_path.read_text(encoding="utf-8")
             # Extrait les premières lignes significatives
-            lines = content.split("\n")[:20]
+            lines = content.split("\n")[:SPEC_PREVIEW_LINES]
             summary = "\n".join(lines)
 
         return self.request_validation(

@@ -6,6 +6,21 @@ from typing import Optional
 
 import yaml
 
+from ralphy.constants import (
+    AGENT_TIMEOUT_SECONDS,
+    CB_INACTIVITY_TIMEOUT_SECONDS,
+    CB_MAX_ATTEMPTS,
+    CB_MAX_OUTPUT_SIZE_BYTES,
+    CB_MAX_REPEATED_ERRORS,
+    CB_TASK_STAGNATION_TIMEOUT_SECONDS,
+    DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_RETRY_DELAY_SECONDS,
+    FEATURE_NAME_PATTERN,
+    IMPL_TIMEOUT_SECONDS,
+    PR_TIMEOUT_SECONDS,
+    QA_TIMEOUT_SECONDS,
+    SPEC_TIMEOUT_SECONDS,
+)
 from ralphy.logger import get_logger
 
 # Whitelist of allowed model names to prevent command injection
@@ -44,11 +59,11 @@ class TimeoutConfig:
     n'est spécifié lors de l'appel à agent.run().
     """
 
-    specification: int = 1800  # 30 min - Phase 1
-    implementation: int = 14400  # 4h - Phase 2
-    qa: int = 1800  # 30 min - Phase 3
-    pr: int = 600  # 10 min - Phase 4
-    agent: int = 300  # 5 min - Fallback par défaut (utilisé par BaseAgent.run)
+    specification: int = SPEC_TIMEOUT_SECONDS  # 30 min - Phase 1
+    implementation: int = IMPL_TIMEOUT_SECONDS  # 4h - Phase 2
+    qa: int = QA_TIMEOUT_SECONDS  # 30 min - Phase 3
+    pr: int = PR_TIMEOUT_SECONDS  # 10 min - Phase 4
+    agent: int = AGENT_TIMEOUT_SECONDS  # 5 min - Fallback (BaseAgent.run)
 
 
 @dataclass
@@ -59,8 +74,8 @@ class RetryConfig:
     Les échecs d'EXIT_SIGNAL ne déclenchent pas de retry.
     """
 
-    max_attempts: int = 2  # Nombre total de tentatives (1 = pas de retry)
-    delay_seconds: int = 5  # Délai entre les tentatives
+    max_attempts: int = DEFAULT_RETRY_ATTEMPTS  # Total attempts (1 = no retry)
+    delay_seconds: int = DEFAULT_RETRY_DELAY_SECONDS  # Delay between retries
 
 
 @dataclass
@@ -76,11 +91,11 @@ class CircuitBreakerConfig:
     """
 
     enabled: bool = True
-    inactivity_timeout: int = 60  # secondes
-    max_repeated_errors: int = 3
-    task_stagnation_timeout: int = 600  # 10 minutes
-    max_output_size: int = 524288  # 500KB
-    max_attempts: int = 3  # Warnings avant trip
+    inactivity_timeout: int = CB_INACTIVITY_TIMEOUT_SECONDS
+    max_repeated_errors: int = CB_MAX_REPEATED_ERRORS
+    task_stagnation_timeout: int = CB_TASK_STAGNATION_TIMEOUT_SECONDS  # 10 minutes
+    max_output_size: int = CB_MAX_OUTPUT_SIZE_BYTES  # 500KB
+    max_attempts: int = CB_MAX_ATTEMPTS  # Warnings before trip
 
 
 @dataclass
@@ -127,11 +142,11 @@ class ProjectConfig:
         cb_data = data.get("circuit_breaker", {})
 
         timeouts = TimeoutConfig(
-            specification=timeouts_data.get("specification", 1800),
-            implementation=timeouts_data.get("implementation", 14400),
-            qa=timeouts_data.get("qa", 1800),
-            pr=timeouts_data.get("pr", 600),
-            agent=timeouts_data.get("agent", 300),
+            specification=timeouts_data.get("specification", SPEC_TIMEOUT_SECONDS),
+            implementation=timeouts_data.get("implementation", IMPL_TIMEOUT_SECONDS),
+            qa=timeouts_data.get("qa", QA_TIMEOUT_SECONDS),
+            pr=timeouts_data.get("pr", PR_TIMEOUT_SECONDS),
+            agent=timeouts_data.get("agent", AGENT_TIMEOUT_SECONDS),
         )
 
         models = ModelConfig(
@@ -147,17 +162,17 @@ class ProjectConfig:
         )
 
         retry = RetryConfig(
-            max_attempts=retry_data.get("max_attempts", 2),
-            delay_seconds=retry_data.get("delay_seconds", 5),
+            max_attempts=retry_data.get("max_attempts", DEFAULT_RETRY_ATTEMPTS),
+            delay_seconds=retry_data.get("delay_seconds", DEFAULT_RETRY_DELAY_SECONDS),
         )
 
         circuit_breaker = CircuitBreakerConfig(
             enabled=cb_data.get("enabled", True),
-            inactivity_timeout=cb_data.get("inactivity_timeout", 60),
-            max_repeated_errors=cb_data.get("max_repeated_errors", 3),
-            task_stagnation_timeout=cb_data.get("task_stagnation_timeout", 600),
-            max_output_size=cb_data.get("max_output_size", 524288),
-            max_attempts=cb_data.get("max_attempts", 3),
+            inactivity_timeout=cb_data.get("inactivity_timeout", CB_INACTIVITY_TIMEOUT_SECONDS),
+            max_repeated_errors=cb_data.get("max_repeated_errors", CB_MAX_REPEATED_ERRORS),
+            task_stagnation_timeout=cb_data.get("task_stagnation_timeout", CB_TASK_STAGNATION_TIMEOUT_SECONDS),
+            max_output_size=cb_data.get("max_output_size", CB_MAX_OUTPUT_SIZE_BYTES),
+            max_attempts=cb_data.get("max_attempts", CB_MAX_ATTEMPTS),
         )
 
         return cls(
@@ -235,6 +250,31 @@ def ensure_ralph_dir(project_path: Path) -> Path:
     return ralph_dir
 
 
+def _validate_feature_name(feature_name: str) -> None:
+    """Validate feature name to prevent path traversal attacks.
+
+    Args:
+        feature_name: The feature name to validate.
+
+    Raises:
+        ValueError: If the feature name contains invalid characters or patterns.
+    """
+    # Check for path traversal patterns
+    if ".." in feature_name:
+        raise ValueError(f"Invalid feature name: contains '..': {feature_name}")
+    if "/" in feature_name:
+        raise ValueError(f"Invalid feature name: contains '/': {feature_name}")
+    if "\\" in feature_name:
+        raise ValueError(f"Invalid feature name: contains '\\': {feature_name}")
+
+    # Check pattern - must start with alphanumeric, contain only safe characters
+    if not FEATURE_NAME_PATTERN.match(feature_name):
+        raise ValueError(
+            f"Invalid feature name format: {feature_name}. "
+            "Must start with alphanumeric and contain only alphanumeric, hyphens, or underscores."
+        )
+
+
 def get_feature_dir(project_path: Path, feature_name: str) -> Path:
     """Returns the feature directory path: docs/features/<feature-name>/
 
@@ -244,7 +284,11 @@ def get_feature_dir(project_path: Path, feature_name: str) -> Path:
 
     Returns:
         Path to the feature directory
+
+    Raises:
+        ValueError: If feature_name contains invalid characters or path traversal attempts.
     """
+    _validate_feature_name(feature_name)
     return project_path / "docs" / "features" / feature_name
 
 
@@ -257,6 +301,9 @@ def ensure_feature_dir(project_path: Path, feature_name: str) -> Path:
 
     Returns:
         Path to the created feature directory
+
+    Raises:
+        ValueError: If feature_name contains invalid characters or path traversal attempts.
     """
     feature_dir = get_feature_dir(project_path, feature_name)
     feature_dir.mkdir(parents=True, exist_ok=True)

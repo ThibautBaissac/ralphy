@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 import psutil
 
+from ralphy.constants import DEFAULT_CONTEXT_WINDOW, DEFAULT_MAX_OUTPUT_TOKENS
 from ralphy.logger import get_logger
 
 if TYPE_CHECKING:
@@ -36,8 +37,8 @@ class TokenUsage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
-    context_window: int = 200000
-    max_output_tokens: int = 64000
+    context_window: int = DEFAULT_CONTEXT_WINDOW
+    max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
 
     @property
     def total_tokens(self) -> int:

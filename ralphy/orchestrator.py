@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional, Type
 
 from ralphy.agents import DevAgent, PRAgent, QAAgent, SpecAgent
 from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.config import ProjectConfig, ensure_feature_dir, ensure_ralph_dir, load_config
+from ralphy.constants import (
+    MIN_QA_REPORT_FILE_SIZE_BYTES,
+    MIN_SPEC_FILE_SIZE_BYTES,
+    MIN_TASKS_FILE_SIZE_BYTES,
+)
 from ralphy.logger import get_logger
 from ralphy.progress import ProgressDisplay
 from ralphy.state import Phase, StateManager
@@ -130,8 +135,8 @@ class Orchestrator:
         return (
             spec_path.exists()
             and tasks_path.exists()
-            and spec_path.stat().st_size > 1000
-            and tasks_path.stat().st_size > 500
+            and spec_path.stat().st_size > MIN_SPEC_FILE_SIZE_BYTES
+            and tasks_path.stat().st_size > MIN_TASKS_FILE_SIZE_BYTES
         )
 
     def _qa_artifacts_valid(self) -> bool:
@@ -140,7 +145,7 @@ class Orchestrator:
         Vérifie que QA_REPORT.md existe et a une taille minimale.
         """
         qa_path = self.feature_dir / "QA_REPORT.md"
-        return qa_path.exists() and qa_path.stat().st_size > 500
+        return qa_path.exists() and qa_path.stat().st_size > MIN_QA_REPORT_FILE_SIZE_BYTES
 
     def _get_qa_report_summary(self) -> dict:
         """Extract QA summary directly from QA_REPORT.md file.

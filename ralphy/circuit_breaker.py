@@ -9,6 +9,10 @@ from enum import Enum
 from typing import Callable, Optional
 
 from ralphy.config import CircuitBreakerConfig
+from ralphy.constants import (
+    CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS,
+    CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS,
+)
 from ralphy.state import Phase
 
 
@@ -237,13 +241,13 @@ class CircuitBreaker:
         """
         # Phase PR - délai plus long pour les opérations git
         if self._context.phase == Phase.PR:
-            return 120
+            return CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS
 
         # Test command en cours - délai beaucoup plus long
         if self._context.test_command:
             recent_text = "".join(self._recent_output)
             if self._context.test_command in recent_text:
-                return 300
+                return CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS
 
         return self._config.inactivity_timeout
 

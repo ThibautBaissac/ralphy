@@ -19,7 +19,8 @@ from ralphy.claude import (
 from ralphy.config import get_feature_dir, load_config
 from ralphy.logger import get_logger
 from ralphy.orchestrator import Orchestrator
-from ralphy.state import FEATURE_NAME_PATTERN, Phase, StateManager
+from ralphy.constants import FEATURE_NAME_PATTERN
+from ralphy.state import Phase, StateManager
 
 
 def description_to_feature_name(description: str, max_length: int = 50) -> str:

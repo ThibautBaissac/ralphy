@@ -2,17 +2,14 @@
 
 import json
 import os
-import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-
-# Feature name validation pattern - must start with alphanumeric, contain only alphanumeric, hyphens, underscores
-FEATURE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+from ralphy.constants import FEATURE_NAME_PATTERN
 
 
 class Phase(str, Enum):
