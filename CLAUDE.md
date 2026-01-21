@@ -49,17 +49,29 @@ pytest tests/test_circuit_breaker.py::test_inactivity_trigger
 
 ### Running Ralphy
 ```bash
-# Start workflow on a project
-ralphy start /path/to/project
+# Start workflow for a feature (PRD must exist at docs/features/<feature>/PRD.md)
+ralphy start my-feature
 
-# Check workflow status
-ralphy status /path/to/project
+# Quick Start Mode: Create feature from description (auto-generates PRD)
+ralphy start "Add user authentication with OAuth2"
+
+# Start with fresh state (ignore existing progress)
+ralphy start my-feature --fresh
+
+# Disable live progress display
+ralphy start my-feature --no-progress
+
+# Check workflow status for a specific feature
+ralphy status my-feature
+
+# Check status of all features
+ralphy status --all
 
 # Abort running workflow
-ralphy abort /path/to/project
+ralphy abort my-feature
 
 # Reset workflow state
-ralphy reset /path/to/project
+ralphy reset my-feature
 
 # Initialize custom prompt templates
 ralphy init-prompts /path/to/project
@@ -72,6 +84,38 @@ ralphy init-prompts /path/to/project
 ```
 
 ## High-Level Architecture
+
+### Feature-Based Workflow
+
+Ralphy organizes work by **features**, with each feature having its own directory structure:
+
+```
+docs/features/<feature-name>/
+├── PRD.md              # Product Requirements Document (input)
+├── SPEC.md             # Generated specification
+├── TASKS.md            # Generated task list
+├── QA_REPORT.md        # Quality analysis report
+└── .ralphy/
+    ├── state.json      # Feature-specific workflow state
+    ├── config.yaml     # Optional feature-specific config
+    └── prompts/        # Optional custom prompts
+```
+
+**Feature naming**: Must match pattern `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`
+
+### Quick Start Mode
+
+When you provide a description instead of a feature name, Ralphy automatically:
+1. Derives a feature name from the description (e.g., "Add user auth" → `add-user-auth`)
+2. Creates the feature directory structure
+3. Generates a minimal `PRD.md` from your description
+4. Starts the workflow
+
+```bash
+# These are equivalent:
+ralphy start "Implement dark mode toggle"
+# Creates feature: implement-dark-mode-toggle with auto-generated PRD
+```
 
 ### Workflow Orchestration
 
@@ -93,6 +137,8 @@ Central workflow controller that:
 - Handles human validation prompts via `HumanValidator`
 - Coordinates progress display and output streaming
 - Enforces valid state transitions (defined in `state.py::VALID_TRANSITIONS`)
+- **Smart resume**: Skips already-completed phases and validates artifacts before resuming
+- **Task-level checkpointing**: Tracks `last_completed_task_id` for mid-implementation resume
 
 #### BaseAgent (`ralphy/agents/base.py`)
 Abstract base class for all agents implementing:
@@ -100,16 +146,23 @@ Abstract base class for all agents implementing:
 - **Circuit breaker integration**: Monitors agent execution for infinite loops/stagnation
 - **Template-based prompts**: Loads prompts from `ralphy/prompts/*.md`
 - **Exit signal detection**: Agents must emit `EXIT_SIGNAL: true` when complete
+- **Token usage tracking**: Callbacks for real-time token consumption monitoring
 
 **Agent lifecycle**: `build_prompt()` → `ClaudeRunner.run()` → `parse_output()` → `AgentResult`
 
 #### ClaudeRunner (`ralphy/claude.py`)
 Subprocess wrapper for Claude Code CLI that:
-- Executes `claude --print --dangerously-skip-permissions -p "..."`
+- Executes `claude --print --dangerously-skip-permissions --output-format stream-json -p "..."`
+- Uses **stream-json output format** for real-time token tracking
 - Streams output with **non-blocking I/O** (Unix `select()`, not Windows compatible)
 - Supports abort via threading events (reactive within ~100ms)
 - Integrates circuit breaker monitoring during execution
 - Tracks process PID in `.ralphy/claude.pid` for external abort capability
+
+**Token Usage Tracking**:
+- `TokenUsage` dataclass tracks input/output tokens, cache read/creation
+- `ClaudeResponse` includes `token_usage` and `total_cost_usd`
+- `JsonStreamParser` extracts text and usage data from stream-json format
 
 **Critical**: Uses `subprocess.Popen` with unbuffered text mode for real-time output processing.
 
@@ -132,14 +185,19 @@ Protection mechanism against infinite loops with 4 trigger types:
 - Test command detected: 300s inactivity (long-running tests)
 
 #### State Management (`ralphy/state.py`)
-Persistent workflow state in `.ralphy/state.json`:
+Persistent workflow state in `docs/features/<feature>/.ralphy/state.json`:
 - **Phase tracking**: Current workflow phase (IDLE → SPECIFICATION → ... → COMPLETED)
 - **Task counters**: `tasks_completed` / `tasks_total` for progress display
 - **Circuit breaker state**: Tracks attempts and last trigger
 - **Valid transitions**: Enforced via `VALID_TRANSITIONS` dict to prevent invalid state changes
+- **Resume checkpoint**: `last_completed_phase`, `last_completed_task_id`, `last_in_progress_task_id`
+- **Task checkpoint time**: ISO timestamp for resume tracking
 
 **Key methods**:
 - `transition(new_phase)`: Validates and performs phase transitions
+- `checkpoint_task(task_id)`: Saves task progress for resume capability
+- `mark_phase_completed(phase)`: Records phase completion for resume logic
+- `get_resume_task_id()`: Returns task to resume from after interruption
 - `is_running()`: Checks if agent actively executing (not validation/completed states)
 - `is_awaiting_validation()`: Detects validation gate states
 
@@ -149,6 +207,8 @@ Each agent has a **specific prompt template** in `ralphy/prompts/`:
 
 - **spec-agent**: Analyzes PRD, outputs architecture + ordered task list
 - **dev-agent**: **Single long-running session** that processes all tasks sequentially, updates `TASKS.md` status, emits EXIT_SIGNAL when all tasks completed
+  - Supports **task resume**: receives `{{resume_instruction}}` with specific task to continue from
+  - Methods: `count_task_status()`, `get_in_progress_task()`, `get_next_pending_task_after()`
 - **qa-agent**: Code quality/security analysis (OWASP Top 10), structured report
 - **pr-agent**: Git branch creation, commit, push, `gh pr create`
 
@@ -171,6 +231,8 @@ ProjectConfig
 
 **Model selection**: Each phase can use a different Claude model. The model is passed to Claude Code CLI via `--model <model>` flag. This allows cost/performance optimization (e.g., use `opus` for complex implementation, `haiku` for simple PR creation).
 
+**Model validation**: A whitelist of allowed models prevents command injection via config. Supported values: `sonnet`, `opus`, `haiku`, or full model names like `claude-opus-4-5-20251101`. Invalid models fall back to `sonnet`.
+
 ## Critical Implementation Details
 
 ### Exit Signal Protocol
@@ -185,10 +247,16 @@ The abort mechanism uses `threading.Event` with periodic checks:
 **All threads** respect `_abort_event.is_set()` for coordinated shutdown.
 
 ### Progress Display (`ralphy/progress.py`)
-Uses `rich` library for live terminal updates with task bars. Parses agent output for:
+Uses `rich` library for live terminal updates with task bars. Features:
 - Task completion markers (`completed`, `✓`, `done`, etc.)
 - Updates progress bar and task list in real-time
 - Integrates with logger's live mode to avoid output conflicts
+- **Token usage display**: Shows input/output tokens and cost in USD
+- **Activity detection**: Parses output for specific patterns:
+  - TASK_START/TASK_COMPLETE (e.g., task IDs like "1.7", "2.3")
+  - WRITING_FILE, RUNNING_TEST, RUNNING_COMMAND
+  - READING_FILE, THINKING
+- **OutputParser class**: Extracts task info and emits callbacks
 
 ### Validation Flow
 `HumanValidator` (`ralphy/validation.py`) prompts user at two gates:
@@ -197,14 +265,28 @@ Uses `rich` library for live terminal updates with task bars. Parses agent outpu
 
 User can `[Approve]` → continue or `[Reject]` → workflow enters REJECTED state.
 
+### Task Resume System
+
+When a workflow is interrupted or fails, Ralphy can resume from the exact point of failure:
+
+1. **Phase-level resume**: Skips completed phases (SPECIFICATION, IMPLEMENTATION, QA)
+2. **Task-level resume**: For IMPLEMENTATION phase, resumes from the last completed task
+3. **Artifact validation**: Before resuming, validates that required files exist (SPEC.md, TASKS.md)
+
+**Resume flow**:
+1. `_determine_resume_phase()` checks `last_completed_phase` in state
+2. `_should_skip_phase()` compares current phase with resume point
+3. `_restore_task_count()` restores progress counters
+4. Dev agent receives `{{resume_instruction}}` with specific task ID
+
 ## Project Structure Reference
 
 ```
 ralphy/
 ├── agents/          # Specialized agents (spec, dev, qa, pr)
-│   ├── base.py      # BaseAgent with retry + circuit breaker
+│   ├── base.py      # BaseAgent with retry + circuit breaker + token tracking
 │   ├── spec.py      # Specification generation
-│   ├── dev.py       # Implementation (single long session)
+│   ├── dev.py       # Implementation (single long session) + task resume
 │   ├── qa.py        # Quality assurance analysis
 │   └── pr.py        # Pull request creation
 ├── prompts/         # Agent prompt templates (markdown)
@@ -212,17 +294,25 @@ ralphy/
 │   ├── dev_agent.md
 │   ├── qa_agent.md
 │   └── pr_agent.md
-├── orchestrator.py  # Main workflow controller
-├── state.py         # State machine + persistence
-├── claude.py        # Claude Code CLI subprocess wrapper
+├── orchestrator.py  # Main workflow controller + resume logic
+├── state.py         # State machine + persistence + checkpointing
+├── claude.py        # Claude Code CLI subprocess wrapper + token tracking
 ├── circuit_breaker.py  # Infinite loop protection
-├── config.py        # Configuration management
+├── config.py        # Configuration management + model validation
 ├── validation.py    # Human validation prompts
-├── progress.py      # Terminal progress display
+├── progress.py      # Terminal progress display + activity detection
 ├── logger.py        # Structured logging
-└── cli.py           # Click-based CLI commands
+└── cli.py           # Click-based CLI commands + quick start
 
-tests/               # Pytest test suite
+tests/               # Pytest test suite (8 test files)
+├── test_cli.py
+├── test_agents.py
+├── test_circuit_breaker.py
+├── test_state.py
+├── test_orchestrator.py
+├── test_config.py
+├── test_claude.py
+└── test_progress.py
 ```
 
 ## Common Patterns
@@ -310,14 +400,14 @@ This creates `.ralphy/prompts/` with all 4 agent templates:
 ## Limitations
 
 - **Windows not supported**: Uses Unix `select()` for non-blocking I/O
-- **Single workflow per project**: State tracked per project directory
-- **No workflow persistence**: Interrupting Python process loses in-flight work (agent must complete)
 - **Sequential phases**: Cannot run multiple agents in parallel
+- **No mid-task persistence**: Task checkpointing saves task ID, but work within a task may be lost on interrupt
 
 ## Dependencies
 
 Key external dependencies:
 - `click`: CLI framework
+- `psutil`: Process management (for circuit breaker)
 - `pyyaml`: Config file parsing
 - `rich`: Terminal formatting and progress display
 - Claude Code CLI: Must be installed and authenticated (`claude --version`)
@@ -329,6 +419,8 @@ Key external dependencies:
 
 **EXIT_SIGNAL not detected**: Agent prompt must explicitly instruct to emit signal. Check prompt template includes exit signal instruction.
 
-**State transition errors**: Check `VALID_TRANSITIONS` in `state.py`. May need to reset state with `ralphy reset`.
+**State transition errors**: Check `VALID_TRANSITIONS` in `state.py`. May need to reset state with `ralphy reset <feature>`.
 
 **Windows compatibility**: Use WSL or Linux. Native Windows support blocked by `select()` limitation.
+
+**Resume not working**: Verify artifact files exist (SPEC.md, TASKS.md). Check `state.json` for `last_completed_phase` value.
