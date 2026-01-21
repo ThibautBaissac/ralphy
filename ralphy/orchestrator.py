@@ -225,11 +225,23 @@ class Orchestrator:
         if total > 0:
             self.state_manager.update_tasks(completed, total)
 
-    def _start_phase_progress(self, phase_name: str, total_tasks: int = 0) -> None:
+    def _start_phase_progress(
+        self,
+        phase_name: str,
+        total_tasks: int = 0,
+        model: str = "",
+        timeout: int = 0,
+    ) -> None:
         """Démarre l'affichage de progression pour une phase."""
         if self._progress_display and self._show_progress:
             self.logger.set_live_mode(True)
-            self._progress_display.start(phase_name, total_tasks)
+            self._progress_display.start(
+                phase_name,
+                total_tasks,
+                model=model,
+                timeout=timeout,
+                feature_name=self.feature_name,
+            )
 
     def _stop_phase_progress(self) -> None:
         """Arrête l'affichage de progression."""
@@ -378,7 +390,11 @@ class Orchestrator:
         self.logger.phase("SPECIFICATION")
         self._safe_transition(Phase.SPECIFICATION)
 
-        self._start_phase_progress("SPECIFICATION")
+        self._start_phase_progress(
+            "SPECIFICATION",
+            model=self.config.models.specification,
+            timeout=self.config.timeouts.specification,
+        )
 
         try:
             agent = SpecAgent(
@@ -435,7 +451,12 @@ class Orchestrator:
         # Récupère le nombre de tâches pour la progress bar
         completed_tasks = self.state_manager.state.tasks_completed
         total_tasks = self.state_manager.state.tasks_total
-        self._start_phase_progress("IMPLEMENTATION", total_tasks)
+        self._start_phase_progress(
+            "IMPLEMENTATION",
+            total_tasks,
+            model=self.config.models.implementation,
+            timeout=self.config.timeouts.implementation,
+        )
 
         # Si on reprend avec des tâches déjà complétées, met à jour l'affichage
         if completed_tasks > 0 and self._progress_display:
@@ -475,7 +496,11 @@ class Orchestrator:
         self.logger.phase("QA")
         self._safe_transition(Phase.QA)
 
-        self._start_phase_progress("QA")
+        self._start_phase_progress(
+            "QA",
+            model=self.config.models.qa,
+            timeout=self.config.timeouts.qa,
+        )
 
         try:
             agent = QAAgent(
@@ -519,7 +544,11 @@ class Orchestrator:
         self.logger.phase("PR")
         self._safe_transition(Phase.PR)
 
-        self._start_phase_progress("PR")
+        self._start_phase_progress(
+            "PR",
+            model=self.config.models.pr,
+            timeout=self.config.timeouts.pr,
+        )
 
         try:
             agent = PRAgent(

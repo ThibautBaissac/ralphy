@@ -3,6 +3,7 @@
 import re
 import threading
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -10,6 +11,7 @@ from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
+from rich.rule import Rule
 from rich.text import Text
 
 
@@ -160,6 +162,11 @@ class ProgressState:
     current_task_id: Optional[str] = None  # Ex: "1.9"
     current_task_name: Optional[str] = None  # Ex: "Model - Créer modèle Team"
     last_output_lines: list[str] = field(default_factory=list)
+    # New fields for enriched display
+    model_name: str = ""
+    phase_started_at: Optional[datetime] = None
+    phase_timeout: int = 0  # seconds
+    feature_name: str = ""
 
 
 class ProgressDisplay:
@@ -200,12 +207,23 @@ class ProgressDisplay:
         self._phase_task_id: Optional[int] = None
         self._tasks_task_id: Optional[int] = None
 
-    def start(self, phase_name: str, total_tasks: int = 0) -> None:
+    def start(
+        self,
+        phase_name: str,
+        total_tasks: int = 0,
+        model: str = "",
+        timeout: int = 0,
+        feature_name: str = "",
+    ) -> None:
         """Démarre l'affichage de progression."""
         with self._lock:
             self._state = ProgressState(
                 phase_name=phase_name.upper(),
                 tasks_total=total_tasks,
+                model_name=model,
+                phase_started_at=datetime.now(),
+                phase_timeout=timeout,
+                feature_name=feature_name,
             )
 
             # Reset progress bars
@@ -354,6 +372,22 @@ class ProgressDisplay:
 
             self._refresh()
 
+    def _format_elapsed(self, elapsed_seconds: float) -> str:
+        """Format elapsed time as HH:MM:SS or MM:SS."""
+        minutes, seconds = divmod(int(elapsed_seconds), 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours > 0:
+            return f"{hours:d}h{minutes:02d}m{seconds:02d}s"
+        return f"{minutes:02d}:{seconds:02d}"
+
+    def _format_timeout(self, timeout_seconds: int) -> str:
+        """Format timeout for display (e.g., '4h00m', '30m')."""
+        hours, remainder = divmod(timeout_seconds, 3600)
+        minutes = remainder // 60
+        if hours > 0:
+            return f"{hours}h{minutes:02d}m"
+        return f"{minutes}m"
+
     def _refresh(self) -> None:
         """Rafraîchit l'affichage."""
         if self._live and self._active:
@@ -363,24 +397,72 @@ class ProgressDisplay:
         """Génère le rendu du panel de progression."""
         elements = []
 
+        # Header section: Feature name
+        if self._state.feature_name:
+            feature_text = Text()
+            feature_text.append("Feature: ", style="dim")
+            feature_text.append(self._state.feature_name, style="bold cyan")
+            elements.append(feature_text)
+
+        # Phase and model line
+        info_line = Text()
+        info_line.append("Phase: ", style="dim")
+        info_line.append(self._state.phase_name, style="bold yellow")
+        if self._state.model_name:
+            info_line.append("  Model: ", style="dim")
+            info_line.append(self._state.model_name, style="bold magenta")
+        elements.append(info_line)
+
+        # Elapsed time and timeout line
+        if self._state.phase_started_at:
+            elapsed = (datetime.now() - self._state.phase_started_at).total_seconds()
+            time_line = Text()
+            time_line.append("Elapsed: ", style="dim")
+            time_line.append(self._format_elapsed(elapsed), style="bold green")
+            if self._state.phase_timeout > 0:
+                time_line.append("  Timeout: ", style="dim")
+                time_line.append(self._format_timeout(self._state.phase_timeout), style="bold")
+            elements.append(time_line)
+
+        # Separator before progress bars
+        elements.append(Rule(style="dim"))
+
         # Progress bars
         elements.append(self._phase_progress)
         if self._tasks_task_id is not None:
             elements.append(self._tasks_progress)
 
-        # Activité courante
+        # Separator before activity
+        elements.append(Rule(style="dim"))
+
+        # Current task (more prominent)
+        if self._state.current_task_id:
+            task_text = Text()
+            task_text.append("● ", style="green bold")
+            task_text.append(f"Task {self._state.current_task_id}", style="bold")
+            if self._state.current_task_name:
+                task_text.append(f": {self._state.current_task_name}", style="")
+            elements.append(task_text)
+
+        # Current activity (sub-detail)
         if self._state.current_activity:
             activity_text = Text()
-            activity_text.append("\n● ", style="green bold")
-            activity_text.append(self._state.current_activity.description)
+            activity_text.append("  > ", style="dim")
+            activity_text.append(self._state.current_activity.description, style="dim italic")
+            elements.append(activity_text)
+        elif not self._state.current_task_id:
+            # Show generic activity when no task is active
+            activity_text = Text()
+            activity_text.append("● ", style="green bold")
+            activity_text.append("Working...", style="dim italic")
             elements.append(activity_text)
 
-        # Dernières lignes d'output
+        # Last output lines (reduced prominence)
         if self._state.last_output_lines:
-            output_text = Text("\n")
+            output_text = Text()
             for line in self._state.last_output_lines[-self.MAX_OUTPUT_LINES :]:
                 # Tronque les lignes trop longues
-                display_line = line[:80] + "..." if len(line) > 80 else line
+                display_line = line[:70] + "..." if len(line) > 70 else line
                 output_text.append("  > ", style="dim")
                 output_text.append(display_line + "\n", style="dim")
             elements.append(output_text)

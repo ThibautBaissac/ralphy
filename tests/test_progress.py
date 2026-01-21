@@ -1,5 +1,7 @@
 """Tests pour le module progress."""
 
+from datetime import datetime
+
 import pytest
 
 from ralphy.progress import ActivityType, Activity, OutputParser, ProgressDisplay, ProgressState
@@ -200,5 +202,108 @@ class TestProgressDisplay:
 
         display.update_phase_progress(-10.0)
         assert display._state.phase_progress == 0.0
+
+        display.stop()
+
+
+class TestProgressStateNewFields:
+    """Tests pour les nouveaux champs de ProgressState."""
+
+    def test_new_fields_defaults(self):
+        """Test que les nouveaux champs ont des valeurs par défaut."""
+        state = ProgressState()
+        assert state.model_name == ""
+        assert state.phase_started_at is None
+        assert state.phase_timeout == 0
+        assert state.feature_name == ""
+
+    def test_new_fields_initialization(self):
+        """Test l'initialisation des nouveaux champs."""
+        now = datetime.now()
+        state = ProgressState(
+            phase_name="IMPLEMENTATION",
+            model_name="opus",
+            phase_started_at=now,
+            phase_timeout=14400,
+            feature_name="user-auth",
+        )
+        assert state.model_name == "opus"
+        assert state.phase_started_at == now
+        assert state.phase_timeout == 14400
+        assert state.feature_name == "user-auth"
+
+
+class TestTimeFormattingHelpers:
+    """Tests pour les fonctions de formatage du temps."""
+
+    def test_format_elapsed_seconds_only(self):
+        """Test formatage pour moins d'une minute."""
+        display = ProgressDisplay()
+        assert display._format_elapsed(45) == "00:45"
+        assert display._format_elapsed(0) == "00:00"
+        assert display._format_elapsed(59) == "00:59"
+
+    def test_format_elapsed_minutes_and_seconds(self):
+        """Test formatage avec minutes et secondes."""
+        display = ProgressDisplay()
+        assert display._format_elapsed(65) == "01:05"
+        assert display._format_elapsed(130) == "02:10"
+        assert display._format_elapsed(3599) == "59:59"
+
+    def test_format_elapsed_hours(self):
+        """Test formatage avec heures."""
+        display = ProgressDisplay()
+        assert display._format_elapsed(3600) == "1h00m00s"
+        assert display._format_elapsed(3661) == "1h01m01s"
+        assert display._format_elapsed(7325) == "2h02m05s"
+
+    def test_format_timeout_minutes_only(self):
+        """Test formatage timeout en minutes."""
+        display = ProgressDisplay()
+        assert display._format_timeout(1800) == "30m"
+        assert display._format_timeout(600) == "10m"
+        assert display._format_timeout(60) == "1m"
+
+    def test_format_timeout_hours(self):
+        """Test formatage timeout en heures."""
+        display = ProgressDisplay()
+        assert display._format_timeout(3600) == "1h00m"
+        assert display._format_timeout(7200) == "2h00m"
+        assert display._format_timeout(14400) == "4h00m"
+        assert display._format_timeout(5400) == "1h30m"
+
+
+class TestProgressDisplayStart:
+    """Tests pour la méthode start avec les nouveaux paramètres."""
+
+    def test_start_with_new_params(self):
+        """Test démarrage avec les nouveaux paramètres."""
+        display = ProgressDisplay()
+        display.start(
+            "IMPLEMENTATION",
+            total_tasks=10,
+            model="opus",
+            timeout=14400,
+            feature_name="user-auth",
+        )
+
+        assert display._state.phase_name == "IMPLEMENTATION"
+        assert display._state.model_name == "opus"
+        assert display._state.phase_timeout == 14400
+        assert display._state.feature_name == "user-auth"
+        assert display._state.phase_started_at is not None
+
+        display.stop()
+
+    def test_start_without_new_params(self):
+        """Test démarrage sans les nouveaux paramètres (backward compatibility)."""
+        display = ProgressDisplay()
+        display.start("SPECIFICATION", 5)
+
+        assert display._state.phase_name == "SPECIFICATION"
+        assert display._state.model_name == ""
+        assert display._state.phase_timeout == 0
+        assert display._state.feature_name == ""
+        assert display._state.phase_started_at is not None
 
         display.stop()
