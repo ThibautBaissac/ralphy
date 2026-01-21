@@ -35,20 +35,19 @@ class DevAgent(BaseAgent):
             self.logger.error("TASKS.md non trouvé dans le dossier feature")
             return ""
 
-        prompt = template.replace("{{project_name}}", self.config.name)
-        prompt = prompt.replace("{{language}}", self.config.stack.language)
-        prompt = prompt.replace("{{test_command}}", self.config.stack.test_command)
-        prompt = prompt.replace("{{spec_content}}", spec_content)
-        prompt = prompt.replace("{{tasks_content}}", tasks_content)
+        # Build resume instruction if resuming from a specific task
+        resume_instruction = (
+            self._build_resume_instruction(start_from_task)
+            if start_from_task
+            else ""
+        )
 
-        # Add resume instruction if resuming from a specific task
-        if start_from_task:
-            resume_instruction = self._build_resume_instruction(start_from_task)
-            prompt = prompt.replace("{{resume_instruction}}", resume_instruction)
-        else:
-            prompt = prompt.replace("{{resume_instruction}}", "")
-
-        return prompt
+        return self._apply_placeholders(
+            template,
+            spec_content=spec_content,
+            tasks_content=tasks_content,
+            resume_instruction=resume_instruction,
+        )
 
     def _build_resume_instruction(self, task_id: str) -> str:
         """Construit l'instruction de resume pour le prompt."""

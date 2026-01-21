@@ -19,10 +19,7 @@ class QAAgent(BaseAgent):
             self.logger.error("Template qa_agent.md non trouvé")
             return ""
 
-        prompt = template.replace("{{project_name}}", self.config.name)
-        prompt = prompt.replace("{{language}}", self.config.stack.language)
-
-        return prompt
+        return self._apply_common_placeholders(template)
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
         """Vérifie que QA_REPORT.md a été généré."""

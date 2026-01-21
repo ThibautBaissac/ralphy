@@ -2,12 +2,17 @@
 
 import json
 import os
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+
+
+# Feature name validation pattern - must start with alphanumeric, contain only alphanumeric, hyphens, underscores
+FEATURE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
 
 class Phase(str, Enum):
@@ -120,16 +125,73 @@ class WorkflowState:
 class StateManager:
     """Gestionnaire d'état du workflow."""
 
+    @staticmethod
+    def _validate_feature_name(feature_name: str) -> None:
+        """Validate feature name to prevent path traversal attacks.
+
+        Args:
+            feature_name: The feature name to validate.
+
+        Raises:
+            ValueError: If the feature name contains invalid characters or patterns.
+        """
+        # Check for path traversal patterns
+        if ".." in feature_name:
+            raise ValueError(f"Invalid feature name: contains '..': {feature_name}")
+        if "/" in feature_name:
+            raise ValueError(f"Invalid feature name: contains '/': {feature_name}")
+        if "\\" in feature_name:
+            raise ValueError(f"Invalid feature name: contains '\\': {feature_name}")
+
+        # Check pattern - must start with alphanumeric, contain only alphanumeric, hyphens, underscores
+        if not FEATURE_NAME_PATTERN.match(feature_name):
+            raise ValueError(
+                f"Invalid feature name format: {feature_name}. "
+                "Must start with alphanumeric and contain only alphanumeric, hyphens, or underscores."
+            )
+
+    @staticmethod
+    def _check_symlink_safety(path: Path, base_path: Path, description: str) -> None:
+        """Check that a path is not a symlink pointing outside the project.
+
+        Args:
+            path: The path to check.
+            base_path: The base project path (resolved).
+            description: Description of the path for error messages.
+
+        Raises:
+            ValueError: If the path is a symlink pointing outside the project.
+        """
+        if not path.exists():
+            return  # Path doesn't exist yet, nothing to check
+
+        if path.is_symlink():
+            resolved = path.resolve()
+            try:
+                # Check if resolved path is within the project
+                resolved.relative_to(base_path)
+            except ValueError:
+                raise ValueError(
+                    f"{description} ({path}) is a symlink pointing outside project: {resolved}"
+                )
+
     def __init__(self, project_path: Path, feature_name: Optional[str] = None):
         """Initialize the state manager.
 
         Args:
             project_path: Root path of the project
             feature_name: Name of the feature (if None, uses legacy project-root state)
+
+        Raises:
+            ValueError: If feature_name contains path traversal characters or invalid format.
         """
         # Resolve to canonical path (follow symlinks, normalize)
         self.project_path = project_path.resolve()
         self.feature_name = feature_name
+
+        # Validate feature name to prevent path traversal attacks
+        if feature_name is not None:
+            self._validate_feature_name(feature_name)
 
         # Verify it's a directory
         if not self.project_path.is_dir():
@@ -140,15 +202,21 @@ class StateManager:
             # Feature-based state in docs/features/<feature-name>/.ralphy/
             feature_dir = self.project_path / "docs" / "features" / feature_name
             ralphy_dir = feature_dir / ".ralphy"
+
+            # Check feature_dir for symlink attacks
+            self._check_symlink_safety(feature_dir, self.project_path, "Feature directory")
         else:
             # Legacy: project-root state in .ralphy/
             ralphy_dir = self.project_path / ".ralphy"
 
-        # Prevent symlink attacks on .ralphy directory
-        if ralphy_dir.exists() and ralphy_dir.is_symlink():
-            raise ValueError(f"{ralphy_dir} is a symlink - potential security risk")
+        # Check ralphy_dir for symlink attacks
+        self._check_symlink_safety(ralphy_dir, self.project_path, "Ralphy directory")
 
         self.state_file = ralphy_dir / "state.json"
+
+        # Check state_file for symlink attacks
+        self._check_symlink_safety(self.state_file, self.project_path, "State file")
+
         self._state: Optional[WorkflowState] = None
         self._lock = threading.Lock()
 

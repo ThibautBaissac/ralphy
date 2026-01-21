@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Callable, ClassVar, Optional
 
 from ralphy.circuit_breaker import CircuitBreaker, CircuitBreakerContext
 from ralphy.claude import ClaudeResponse, ClaudeRunner
@@ -34,6 +35,10 @@ class BaseAgent(ABC):
 
     name: str = "base-agent"
     prompt_file: str = ""
+
+    # Class-level prompt cache to avoid repeated disk I/O
+    _prompt_cache: ClassVar[dict[tuple[Path, str], str]] = {}
+    _cache_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __init__(
         self,
@@ -71,7 +76,27 @@ class BaseAgent(ABC):
 
         Les prompts custom sont validés avant utilisation. S'ils sont invalides,
         le template par défaut est utilisé avec un warning.
+
+        Results are cached at the class level to avoid repeated disk I/O.
         """
+        cache_key = (self.project_path, self.prompt_file)
+
+        # Check cache first (under lock for thread safety)
+        with self._cache_lock:
+            if cache_key in self._prompt_cache:
+                return self._prompt_cache[cache_key]
+
+        # Load from disk
+        content = self._load_prompt_from_disk()
+
+        # Cache the result
+        with self._cache_lock:
+            self._prompt_cache[cache_key] = content
+
+        return content
+
+    def _load_prompt_from_disk(self) -> str:
+        """Load prompt template from disk (custom or package default)."""
         # 1. Cherche dans le projet
         local_path = self.project_path / ".ralphy" / "prompts" / self.prompt_file
         if local_path.exists():
@@ -86,6 +111,53 @@ class BaseAgent(ABC):
         except (FileNotFoundError, TypeError):
             self.logger.error(f"Template {self.prompt_file} non trouvé")
             return ""
+
+    @classmethod
+    def clear_prompt_cache(cls) -> None:
+        """Clear the prompt template cache.
+
+        Useful for testing or when prompt files are modified during runtime.
+        """
+        with cls._cache_lock:
+            cls._prompt_cache.clear()
+
+    def _apply_common_placeholders(self, template: str) -> str:
+        """Replace common placeholders in a template.
+
+        Replaces:
+        - {{project_name}}: Project name from config
+        - {{language}}: Stack language from config
+        - {{test_command}}: Test command from config
+
+        Args:
+            template: The template string with placeholders.
+
+        Returns:
+            Template with common placeholders replaced.
+        """
+        result = template.replace("{{project_name}}", self.config.name)
+        result = result.replace("{{language}}", self.config.stack.language)
+        result = result.replace("{{test_command}}", self.config.stack.test_command)
+        return result
+
+    def _apply_placeholders(self, template: str, **kwargs: str) -> str:
+        """Apply common placeholders plus custom key-value pairs.
+
+        First applies common placeholders (project_name, language, test_command),
+        then replaces any additional {{key}} patterns with provided values.
+
+        Args:
+            template: The template string with placeholders.
+            **kwargs: Additional placeholder key-value pairs (e.g., prd_content="...").
+                      None values are replaced with empty strings.
+
+        Returns:
+            Template with all placeholders replaced.
+        """
+        result = self._apply_common_placeholders(template)
+        for key, value in kwargs.items():
+            result = result.replace(f"{{{{{key}}}}}", value or "")
+        return result
 
     def _validate_prompt(self, content: str) -> bool:
         """Valide qu'un prompt custom est utilisable.

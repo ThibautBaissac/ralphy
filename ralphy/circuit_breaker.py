@@ -3,7 +3,7 @@
 import hashlib
 import threading
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Optional
@@ -91,6 +91,7 @@ class CircuitBreaker:
         self._last_task_completion_time = time.monotonic()
         self._total_output_bytes = 0
         self._error_hashes: deque[str] = deque(maxlen=10)
+        self._error_counts: Counter[str] = Counter()  # O(1) error counting
         self._recent_output: deque[str] = deque(maxlen=50)
 
     @property
@@ -127,6 +128,7 @@ class CircuitBreaker:
             self._last_task_completion_time = time.monotonic()
             self._total_output_bytes = 0
             self._error_hashes.clear()
+            self._error_counts.clear()
             self._recent_output.clear()
 
     def record_output(self, line: str) -> Optional[TriggerType]:
@@ -282,12 +284,19 @@ class CircuitBreaker:
         Returns:
             _TriggerResult si le seuil est atteint, None sinon
         """
+        # Decrement count for oldest error if deque is at capacity
+        if len(self._error_hashes) == self._error_hashes.maxlen:
+            oldest = self._error_hashes[0]
+            self._error_counts[oldest] -= 1
+            if self._error_counts[oldest] <= 0:
+                del self._error_counts[oldest]
+
+        # Add new error hash and increment its count
         self._error_hashes.append(error_hash)
+        self._error_counts[error_hash] += 1
 
-        # Compte les occurrences du même hash dans les dernières erreurs
-        count = sum(1 for h in self._error_hashes if h == error_hash)
-
-        if count >= self._config.max_repeated_errors:
+        # O(1) lookup instead of O(n) sum
+        if self._error_counts[error_hash] >= self._config.max_repeated_errors:
             return self._trigger_internal(TriggerType.REPEATED_ERROR)
 
         return None

@@ -482,3 +482,120 @@ class TestStateManagerThreadSafety:
         assert manager.state.phase == Phase.SPECIFICATION
         # At least one transition should have succeeded
         assert any(successful_transitions)
+
+
+class TestFeatureNameValidation:
+    """Tests for feature name validation."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / ".ralphy").mkdir()
+            yield project_path
+
+    def test_valid_feature_names_accepted(self, temp_project):
+        """Test that valid feature names are accepted."""
+        valid_names = [
+            "my-feature",
+            "feature123",
+            "Feature_Name",
+            "a",
+            "A1-b2_c3",
+        ]
+        for name in valid_names:
+            # Create the feature directory structure
+            feature_dir = temp_project / "docs" / "features" / name / ".ralphy"
+            feature_dir.mkdir(parents=True, exist_ok=True)
+
+            # Should not raise
+            manager = StateManager(temp_project, name)
+            assert manager.feature_name == name
+
+    def test_path_traversal_rejected(self, temp_project):
+        """Test that path traversal attempts are rejected."""
+        invalid_names = [
+            "../etc/passwd",
+            "feature/../other",
+            "feature/subdir",
+            "feature\\subdir",
+            "..feature",
+        ]
+        for name in invalid_names:
+            with pytest.raises(ValueError, match="Invalid feature name"):
+                StateManager(temp_project, name)
+
+    def test_invalid_format_rejected(self, temp_project):
+        """Test that invalid format feature names are rejected."""
+        invalid_names = [
+            "-starts-with-dash",
+            "_starts_with_underscore",
+            "has space",
+            "has.dot",
+            "",
+        ]
+        for name in invalid_names:
+            if name:  # Empty string is handled differently
+                with pytest.raises(ValueError, match="Invalid feature name"):
+                    StateManager(temp_project, name)
+
+
+class TestSymlinkProtection:
+    """Tests for symlink protection."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire avec structure de feature."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / ".ralphy").mkdir()
+            yield project_path
+
+    def test_symlink_ralphy_dir_outside_project_rejected(self, temp_project):
+        """Test that .ralphy symlink pointing outside project is rejected."""
+        import os
+
+        # Create external target
+        with tempfile.TemporaryDirectory() as external_dir:
+            external_path = Path(external_dir)
+
+            # Create symlinked .ralphy in a feature dir
+            feature_dir = temp_project / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+
+            # Create symlink pointing outside project
+            symlink_path = feature_dir / ".ralphy"
+            os.symlink(external_path, symlink_path)
+
+            with pytest.raises(ValueError, match="symlink pointing outside project"):
+                StateManager(temp_project, "test-feature")
+
+    def test_symlink_within_project_accepted(self, temp_project):
+        """Test that symlinks within project are accepted."""
+        import os
+
+        # Create target within project
+        actual_ralphy = temp_project / "actual_ralphy"
+        actual_ralphy.mkdir()
+
+        # Create feature dir
+        feature_dir = temp_project / "docs" / "features" / "test-feature"
+        feature_dir.mkdir(parents=True)
+
+        # Create symlink within project
+        symlink_path = feature_dir / ".ralphy"
+        os.symlink(actual_ralphy, symlink_path)
+
+        # Should not raise
+        manager = StateManager(temp_project, "test-feature")
+        assert manager.feature_name == "test-feature"
+
+    def test_non_symlink_path_accepted(self, temp_project):
+        """Test that regular directories are accepted."""
+        feature_dir = temp_project / "docs" / "features" / "test-feature" / ".ralphy"
+        feature_dir.mkdir(parents=True)
+
+        # Should not raise
+        manager = StateManager(temp_project, "test-feature")
+        assert manager.feature_name == "test-feature"

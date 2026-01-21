@@ -9,7 +9,7 @@ from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.agents.dev import DevAgent
 from ralphy.agents.spec import SpecAgent
 from ralphy.claude import ClaudeResponse
-from ralphy.config import ProjectConfig
+from ralphy.config import ProjectConfig, StackConfig
 
 
 class ConcreteAgent(BaseAgent):
@@ -444,3 +444,103 @@ class TestValidatePrompt:
 
         assert agent._validate_prompt("") is False
         assert agent._validate_prompt(None) is False
+
+
+class TestPromptCaching:
+    """Tests for prompt template caching."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_prompt_cache_hit(self, temp_project):
+        """Test that subsequent loads use cache."""
+        config = ProjectConfig()
+
+        # Clear cache to start fresh
+        BaseAgent.clear_prompt_cache()
+
+        agent1 = ConcreteAgent(temp_project, config)
+        agent2 = ConcreteAgent(temp_project, config)
+
+        # First load populates cache
+        content1 = agent1.load_prompt_template()
+
+        # Second load should use cache (returns same content)
+        content2 = agent2.load_prompt_template()
+
+        assert content1 == content2
+        assert len(content1) > 0
+
+    def test_clear_prompt_cache(self, temp_project):
+        """Test that clear_prompt_cache empties the cache."""
+        config = ProjectConfig()
+
+        # Populate cache
+        agent = ConcreteAgent(temp_project, config)
+        agent.load_prompt_template()
+
+        # Clear cache
+        BaseAgent.clear_prompt_cache()
+
+        # Verify cache is empty
+        assert len(BaseAgent._prompt_cache) == 0
+
+
+class TestPlaceholderReplacement:
+    """Tests for placeholder replacement methods."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Crée un projet temporaire."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_apply_common_placeholders(self, temp_project):
+        """Test that common placeholders are replaced."""
+        config = ProjectConfig(
+            name="TestProject",
+            stack=StackConfig(language="Python", test_command="pytest"),
+        )
+        agent = ConcreteAgent(temp_project, config)
+
+        template = "Project: {{project_name}}, Lang: {{language}}, Test: {{test_command}}"
+        result = agent._apply_common_placeholders(template)
+
+        assert "TestProject" in result
+        assert "Python" in result
+        assert "pytest" in result
+        assert "{{project_name}}" not in result
+        assert "{{language}}" not in result
+        assert "{{test_command}}" not in result
+
+    def test_apply_placeholders_with_kwargs(self, temp_project):
+        """Test that custom placeholders are replaced."""
+        config = ProjectConfig(name="TestProject")
+        agent = ConcreteAgent(temp_project, config)
+
+        template = "{{project_name}} - {{custom_key}} - {{another}}"
+        result = agent._apply_placeholders(
+            template,
+            custom_key="custom_value",
+            another="another_value",
+        )
+
+        assert "TestProject" in result
+        assert "custom_value" in result
+        assert "another_value" in result
+        assert "{{custom_key}}" not in result
+        assert "{{another}}" not in result
+
+    def test_apply_placeholders_with_none_value(self, temp_project):
+        """Test that None values are replaced with empty strings."""
+        config = ProjectConfig(name="TestProject")
+        agent = ConcreteAgent(temp_project, config)
+
+        template = "{{project_name}}: {{optional}}"
+        result = agent._apply_placeholders(template, optional=None)
+
+        assert "TestProject:" in result
+        assert "{{optional}}" not in result

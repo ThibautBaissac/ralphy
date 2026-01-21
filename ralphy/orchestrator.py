@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, Type
 
 from ralphy.agents import DevAgent, PRAgent, QAAgent, SpecAgent
+from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.config import ProjectConfig, ensure_feature_dir, ensure_ralph_dir, load_config
 from ralphy.logger import get_logger
 from ralphy.progress import ProgressDisplay
@@ -50,6 +52,9 @@ class Orchestrator:
         self._show_progress = show_progress
         self._progress_display: Optional[ProgressDisplay] = None
 
+        # Cached DevAgent for query operations (count_task_status, get_next_pending_task_after)
+        self._cached_dev_agent: Optional[DevAgent] = None
+
         # Configure output callback
         if show_progress:
             self._progress_display = ProgressDisplay(on_task_event=self._on_task_event)
@@ -60,6 +65,22 @@ class Orchestrator:
     def _default_output(self, text: str) -> None:
         """Handler de sortie par défaut."""
         self.logger.stream(text)
+
+    @property
+    def _dev_agent_for_queries(self) -> DevAgent:
+        """Lazily create and cache DevAgent for query operations.
+
+        This agent is reused for count_task_status() and get_next_pending_task_after()
+        to avoid repeated instantiation. For run() operations, create fresh instances
+        with appropriate callbacks.
+        """
+        if self._cached_dev_agent is None:
+            self._cached_dev_agent = DevAgent(
+                project_path=self.project_path,
+                config=self.config,
+                feature_dir=self.feature_dir,
+            )
+        return self._cached_dev_agent
 
     def _progress_output(self, text: str) -> None:
         """Handler de sortie avec mise à jour du progress display."""
@@ -90,12 +111,7 @@ class Orchestrator:
             # Checkpoint task as completed and update task counter
             if task_id:
                 self.state_manager.checkpoint_task(task_id, "completed")
-                agent = DevAgent(
-                    project_path=self.project_path,
-                    config=self.config,
-                    feature_dir=self.feature_dir,
-                )
-                completed, total = agent.count_task_status()
+                completed, total = self._dev_agent_for_queries.count_task_status()
                 self.state_manager.update_tasks(completed, total)
 
     def _on_token_update(self, usage: TokenUsage, cost: float) -> None:
@@ -224,14 +240,7 @@ class Orchestrator:
         le nombre de tâches complétées et le total dans l'état.
         Parse TASKS.md pour compter les tâches marquées comme 'completed'.
         """
-        from ralphy.agents import DevAgent
-
-        agent = DevAgent(
-            project_path=self.project_path,
-            config=self.config,
-            feature_dir=self.feature_dir,
-        )
-        completed, total = agent.count_task_status()
+        completed, total = self._dev_agent_for_queries.count_task_status()
         if total > 0:
             self.state_manager.update_tasks(completed, total)
 
@@ -378,11 +387,7 @@ class Orchestrator:
         if not resume_task_id:
             return None
 
-        agent = DevAgent(
-            project_path=self.project_path,
-            config=self.config,
-            feature_dir=self.feature_dir,
-        )
+        agent = self._dev_agent_for_queries
         next_task = agent.get_next_pending_task_after(resume_task_id)
 
         if next_task:
@@ -395,43 +400,96 @@ class Orchestrator:
 
         return resume_task_id
 
-    def _run_specification_phase(self) -> bool:
-        """Exécute la phase de spécification."""
-        self.logger.phase("SPECIFICATION")
-        self._safe_transition(Phase.SPECIFICATION)
+    def _run_agent_phase(
+        self,
+        phase: Phase,
+        phase_name: str,
+        agent_class: Type[BaseAgent],
+        timeout: int,
+        model: str,
+        agent_kwargs: Optional[dict[str, Any]] = None,
+        run_kwargs: Optional[dict[str, Any]] = None,
+        post_run: Optional[Callable[[AgentResult, BaseAgent], None]] = None,
+    ) -> bool:
+        """Generic method to run an agent phase.
+
+        Consolidates common logic: logging, transition, progress display,
+        agent creation, execution, and error handling.
+
+        Args:
+            phase: The workflow phase to transition to.
+            phase_name: Display name for logging and progress.
+            agent_class: The agent class to instantiate.
+            timeout: Timeout in seconds for agent execution.
+            model: Model to use for the agent.
+            agent_kwargs: Additional kwargs for agent constructor.
+            run_kwargs: Additional kwargs for agent.run().
+            post_run: Optional callback after successful run (receives result and agent).
+
+        Returns:
+            True if phase completed successfully, False otherwise.
+        """
+        self.logger.phase(phase_name)
+        self._safe_transition(phase)
 
         self._start_phase_progress(
-            "SPECIFICATION",
-            model=self.config.models.specification,
-            timeout=self.config.timeouts.specification,
+            phase_name,
+            model=model,
+            timeout=timeout,
         )
 
         try:
-            agent = SpecAgent(
-                project_path=self.project_path,
-                config=self.config,
-                on_output=self.on_output,
-                model=self.config.models.specification,
-                feature_dir=self.feature_dir,
-                on_token_update=self._on_token_update,
-            )
+            # Build agent with common + custom kwargs
+            kwargs: dict[str, Any] = {
+                "project_path": self.project_path,
+                "config": self.config,
+                "on_output": self.on_output,
+                "model": model,
+                "feature_dir": self.feature_dir,
+                "on_token_update": self._on_token_update,
+            }
+            if agent_kwargs:
+                kwargs.update(agent_kwargs)
 
-            result = agent.run(timeout=self.config.timeouts.specification)
+            agent = agent_class(**kwargs)
+
+            # Run agent with timeout + custom kwargs
+            run_args: dict[str, Any] = {"timeout": timeout}
+            if run_kwargs:
+                run_args.update(run_kwargs)
+
+            result = agent.run(**run_args)
 
             if not result.success:
                 self.state_manager.set_failed(result.error_message)
                 return False
 
-            # Compte les tâches générées
-            tasks_count = agent.count_tasks()
-            self.state_manager.update_tasks(0, tasks_count)
-
-            # Clear any previous task checkpoints from a prior implementation
-            self.state_manager.clear_task_checkpoints()
+            # Optional post-run callback
+            if post_run:
+                post_run(result, agent)
 
             return True
         finally:
             self._stop_phase_progress()
+
+    def _run_specification_phase(self) -> bool:
+        """Exécute la phase de spécification."""
+
+        def on_spec_complete(result: AgentResult, agent: BaseAgent) -> None:
+            """Post-run callback for specification phase."""
+            spec_agent = agent  # type: SpecAgent
+            tasks_count = spec_agent.count_tasks()
+            self.state_manager.update_tasks(0, tasks_count)
+            self.state_manager.clear_task_checkpoints()
+
+        return self._run_agent_phase(
+            phase=Phase.SPECIFICATION,
+            phase_name="SPECIFICATION",
+            agent_class=SpecAgent,
+            timeout=self.config.timeouts.specification,
+            model=self.config.models.specification,
+            post_run=on_spec_complete,
+        )
 
     def _run_spec_validation(self) -> bool:
         """Demande la validation des specs."""
@@ -505,34 +563,13 @@ class Orchestrator:
 
     def _run_qa_phase(self) -> bool:
         """Exécute la phase QA."""
-        self.logger.phase("QA")
-        self._safe_transition(Phase.QA)
-
-        self._start_phase_progress(
-            "QA",
-            model=self.config.models.qa,
+        return self._run_agent_phase(
+            phase=Phase.QA,
+            phase_name="QA",
+            agent_class=QAAgent,
             timeout=self.config.timeouts.qa,
+            model=self.config.models.qa,
         )
-
-        try:
-            agent = QAAgent(
-                project_path=self.project_path,
-                config=self.config,
-                on_output=self.on_output,
-                model=self.config.models.qa,
-                feature_dir=self.feature_dir,
-                on_token_update=self._on_token_update,
-            )
-
-            result = agent.run(timeout=self.config.timeouts.qa)
-
-            if not result.success:
-                self.state_manager.set_failed(result.error_message)
-                return False
-
-            return True
-        finally:
-            self._stop_phase_progress()
 
     def _run_qa_validation(self) -> bool:
         """Demande la validation du rapport QA."""
@@ -554,37 +591,19 @@ class Orchestrator:
 
     def _run_pr_phase(self) -> bool:
         """Exécute la phase de création de PR."""
-        self.logger.phase("PR")
-        self._safe_transition(Phase.PR)
 
-        self._start_phase_progress(
-            "PR",
-            model=self.config.models.pr,
-            timeout=self.config.timeouts.pr,
-        )
-
-        try:
-            agent = PRAgent(
-                project_path=self.project_path,
-                config=self.config,
-                on_output=self.on_output,
-                model=self.config.models.pr,
-                feature_dir=self.feature_dir,
-                feature_name=self.feature_name,
-                on_token_update=self._on_token_update,
-            )
-
-            result = agent.run(timeout=self.config.timeouts.pr)
-
-            if not result.success:
-                self.state_manager.set_failed(result.error_message)
-                return False
-
-            # Log l'URL de la PR
+        def on_pr_complete(result: AgentResult, agent: BaseAgent) -> None:
+            """Post-run callback for PR phase."""
             for f in result.files_generated:
                 if f.startswith("PR:"):
                     self.logger.success(f)
 
-            return True
-        finally:
-            self._stop_phase_progress()
+        return self._run_agent_phase(
+            phase=Phase.PR,
+            phase_name="PR",
+            agent_class=PRAgent,
+            timeout=self.config.timeouts.pr,
+            model=self.config.models.pr,
+            agent_kwargs={"feature_name": self.feature_name},
+            post_run=on_pr_complete,
+        )

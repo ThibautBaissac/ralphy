@@ -48,11 +48,11 @@ class PRAgent(BaseAgent):
 
         qa_report = self.read_feature_file("QA_REPORT.md") or "Rapport QA non disponible"
 
-        prompt = template.replace("{{project_name}}", self.config.name)
-        prompt = prompt.replace("{{branch_name}}", self.branch_name)
-        prompt = prompt.replace("{{qa_report}}", qa_report)
-
-        return prompt
+        return self._apply_placeholders(
+            template,
+            branch_name=self.branch_name,
+            qa_report=qa_report,
+        )
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
         """Vérifie que la PR a été créée."""

@@ -25,12 +25,7 @@ class SpecAgent(BaseAgent):
             self.logger.error("PRD.md non trouvé dans le dossier feature")
             return ""
 
-        prompt = template.replace("{{project_name}}", self.config.name)
-        prompt = prompt.replace("{{language}}", self.config.stack.language)
-        prompt = prompt.replace("{{test_command}}", self.config.stack.test_command)
-        prompt = prompt.replace("{{prd_content}}", prd_content)
-
-        return prompt
+        return self._apply_placeholders(template, prd_content=prd_content)
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
         """Vérifie que SPEC.md et TASKS.md ont été générés."""

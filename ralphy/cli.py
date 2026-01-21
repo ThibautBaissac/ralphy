@@ -19,11 +19,7 @@ from ralphy.claude import (
 from ralphy.config import get_feature_dir, load_config
 from ralphy.logger import get_logger
 from ralphy.orchestrator import Orchestrator
-from ralphy.state import Phase, StateManager
-
-
-# Feature name validation regex
-FEATURE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+from ralphy.state import FEATURE_NAME_PATTERN, Phase, StateManager
 
 
 def description_to_feature_name(description: str, max_length: int = 50) -> str:
