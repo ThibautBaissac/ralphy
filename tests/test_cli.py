@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from ralphy.cli import main
+from ralphy.cli import description_to_feature_name, generate_quick_prd, main
 from ralphy.state import Phase, StateManager
 
 
@@ -355,3 +355,178 @@ class TestInitPromptsCommand:
         pr_content = (tmp_path / ".ralphy" / "prompts" / "pr_agent.md").read_text()
         assert "{{branch_name}}" in pr_content
         assert "{{qa_report}}" in pr_content
+
+
+class TestDescriptionToFeatureName:
+    """Tests for the description_to_feature_name function."""
+
+    def test_simple_description(self):
+        """Test converting a simple description to slug."""
+        assert description_to_feature_name("implement user login") == "implement-user-login"
+
+    def test_special_characters(self):
+        """Test handling of special characters."""
+        assert description_to_feature_name("add auth with OAuth 2.0!") == "add-auth-with-oauth-2-0"
+
+    def test_uppercase_to_lowercase(self):
+        """Test uppercase conversion to lowercase."""
+        assert description_to_feature_name("Add User Authentication") == "add-user-authentication"
+
+    def test_max_length_truncation(self):
+        """Test truncation at max length without breaking words."""
+        long_desc = "implement a very long feature with many words in the description"
+        result = description_to_feature_name(long_desc, max_length=20)
+        assert len(result) <= 20
+        # Should not end with a hyphen (truncated mid-word)
+        assert not result.endswith("-")
+
+    def test_empty_description_raises_error(self):
+        """Test that empty description raises ValueError."""
+        with pytest.raises(ValueError, match="empty"):
+            description_to_feature_name("")
+
+    def test_whitespace_only_raises_error(self):
+        """Test that whitespace-only description raises ValueError."""
+        with pytest.raises(ValueError, match="empty"):
+            description_to_feature_name("   ")
+
+    def test_special_only_raises_error(self):
+        """Test that description with only special chars raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot derive"):
+            description_to_feature_name("!@#$%^&*()")
+
+    def test_unicode_normalization(self):
+        """Test handling of unicode characters."""
+        # Accented characters should be normalized to ASCII
+        assert description_to_feature_name("café authentication") == "cafe-authentication"
+
+    def test_multiple_hyphens_collapsed(self):
+        """Test that multiple consecutive hyphens are collapsed."""
+        assert description_to_feature_name("add   multiple   spaces") == "add-multiple-spaces"
+
+
+class TestGenerateQuickPrd:
+    """Tests for the generate_quick_prd function."""
+
+    def test_basic_prd_generation(self):
+        """Test basic PRD generation."""
+        content = generate_quick_prd("implement user login")
+        assert "# implement user login" in content
+        assert "## Objective" in content
+        assert "## Requirements" in content
+        assert "Ralphy Quick Start mode" in content
+
+    def test_prd_strips_whitespace(self):
+        """Test that PRD strips leading/trailing whitespace from description."""
+        content = generate_quick_prd("  implement feature  ")
+        assert "# implement feature" in content
+
+
+class TestQuickStartCommand:
+    """Tests for quick start mode in the start command."""
+
+    def test_quick_start_creates_prd(self, runner, tmp_path, monkeypatch):
+        """Test that quick start mode creates PRD.md from description."""
+        monkeypatch.chdir(tmp_path)
+
+        with patch("ralphy.cli.check_claude_installed", return_value=True), \
+             patch("ralphy.cli.check_git_installed", return_value=True), \
+             patch("ralphy.cli.check_gh_installed", return_value=True), \
+             patch("ralphy.cli.Orchestrator") as mock_orch:
+            # Make orchestrator.run() return True
+            mock_instance = mock_orch.return_value
+            mock_instance.run.return_value = True
+
+            result = runner.invoke(main, ["start", "implement user login"])
+            assert result.exit_code == 0
+
+            # Check PRD was created
+            prd_path = tmp_path / "docs" / "features" / "implement-user-login" / "PRD.md"
+            assert prd_path.exists()
+            content = prd_path.read_text()
+            assert "# implement user login" in content
+            assert "quick start" in result.output.lower()
+
+    def test_existing_feature_takes_precedence(self, runner, tmp_path, monkeypatch):
+        """Test that existing feature with PRD takes precedence over quick start."""
+        monkeypatch.chdir(tmp_path)
+
+        # Create existing feature with PRD
+        feature_dir = tmp_path / "docs" / "features" / "my-feature"
+        feature_dir.mkdir(parents=True)
+        prd_path = feature_dir / "PRD.md"
+        original_content = "# My Custom PRD\n\nCustom content"
+        prd_path.write_text(original_content)
+
+        with patch("ralphy.cli.check_claude_installed", return_value=True), \
+             patch("ralphy.cli.check_git_installed", return_value=True), \
+             patch("ralphy.cli.check_gh_installed", return_value=True), \
+             patch("ralphy.cli.Orchestrator") as mock_orch:
+            mock_instance = mock_orch.return_value
+            mock_instance.run.return_value = True
+
+            result = runner.invoke(main, ["start", "my-feature"])
+            assert result.exit_code == 0
+
+            # Original PRD should be preserved
+            assert prd_path.read_text() == original_content
+            # Should not mention quick start
+            assert "quick start" not in result.output.lower()
+
+    def test_derived_name_conflict_uses_existing_prd(self, runner, tmp_path, monkeypatch):
+        """Test that when derived name conflicts with existing feature, existing PRD is used."""
+        monkeypatch.chdir(tmp_path)
+
+        # Create existing feature that would conflict with derived name
+        feature_dir = tmp_path / "docs" / "features" / "implement-auth"
+        feature_dir.mkdir(parents=True)
+        prd_path = feature_dir / "PRD.md"
+        original_content = "# Existing Auth PRD"
+        prd_path.write_text(original_content)
+
+        with patch("ralphy.cli.check_claude_installed", return_value=True), \
+             patch("ralphy.cli.check_git_installed", return_value=True), \
+             patch("ralphy.cli.check_gh_installed", return_value=True), \
+             patch("ralphy.cli.Orchestrator") as mock_orch:
+            mock_instance = mock_orch.return_value
+            mock_instance.run.return_value = True
+
+            # Pass description that would derive to "implement-auth"
+            result = runner.invoke(main, ["start", "implement auth"])
+            assert result.exit_code == 0
+
+            # Original PRD should be preserved
+            assert prd_path.read_text() == original_content
+            # Should warn about existing feature
+            assert "already exists" in result.output.lower()
+
+    def test_quick_start_with_invalid_description(self, runner, tmp_path, monkeypatch):
+        """Test that invalid description that can't be converted to slug fails."""
+        monkeypatch.chdir(tmp_path)
+
+        with patch("ralphy.cli.check_claude_installed", return_value=True), \
+             patch("ralphy.cli.check_git_installed", return_value=True), \
+             patch("ralphy.cli.check_gh_installed", return_value=True):
+            result = runner.invoke(main, ["start", "!@#$%"])
+            assert result.exit_code != 0
+            assert "cannot derive" in result.output.lower()
+
+    def test_feature_name_without_prd_triggers_quick_start(self, runner, tmp_path, monkeypatch):
+        """Test that valid feature name without PRD triggers quick start."""
+        monkeypatch.chdir(tmp_path)
+
+        with patch("ralphy.cli.check_claude_installed", return_value=True), \
+             patch("ralphy.cli.check_git_installed", return_value=True), \
+             patch("ralphy.cli.check_gh_installed", return_value=True), \
+             patch("ralphy.cli.Orchestrator") as mock_orch:
+            mock_instance = mock_orch.return_value
+            mock_instance.run.return_value = True
+
+            # Use a valid feature name pattern but no existing PRD
+            result = runner.invoke(main, ["start", "new-feature"])
+            assert result.exit_code == 0
+
+            # PRD should be created
+            prd_path = tmp_path / "docs" / "features" / "new-feature" / "PRD.md"
+            assert prd_path.exists()
+            assert "quick start" in result.output.lower()
