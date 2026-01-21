@@ -1,11 +1,13 @@
 """Visualisation de progression temps réel pour Ralphy."""
 
+from __future__ import annotations
+
 import re
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -13,6 +15,9 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 from rich.rule import Rule
 from rich.text import Text
+
+if TYPE_CHECKING:
+    from ralphy.claude import TokenUsage
 
 
 class ActivityType(Enum):
@@ -167,6 +172,9 @@ class ProgressState:
     phase_started_at: Optional[datetime] = None
     phase_timeout: int = 0  # seconds
     feature_name: str = ""
+    # Token usage tracking
+    token_usage: Optional[TokenUsage] = None
+    total_cost_usd: float = 0.0
 
 
 class ProgressDisplay:
@@ -372,6 +380,18 @@ class ProgressDisplay:
 
             self._refresh()
 
+    def update_token_usage(self, usage: TokenUsage, cost: float = 0.0) -> None:
+        """Update token usage and cost display.
+
+        Args:
+            usage: TokenUsage instance with current token counts
+            cost: Total cost in USD
+        """
+        with self._lock:
+            self._state.token_usage = usage
+            self._state.total_cost_usd = cost
+            self._refresh()
+
     def _format_elapsed(self, elapsed_seconds: float) -> str:
         """Format elapsed time as HH:MM:SS or MM:SS."""
         minutes, seconds = divmod(int(elapsed_seconds), 60)
@@ -423,6 +443,31 @@ class ProgressDisplay:
                 time_line.append("  Timeout: ", style="dim")
                 time_line.append(self._format_timeout(self._state.phase_timeout), style="bold")
             elements.append(time_line)
+
+        # Context window and cost line
+        if self._state.token_usage:
+            usage = self._state.token_usage
+            utilization = usage.context_utilization
+            context_line = Text()
+            context_line.append("Context: ", style="dim")
+
+            # Color code utilization: green < 60%, yellow 60-80%, red > 80%
+            if utilization < 60:
+                util_style = "bold green"
+            elif utilization < 80:
+                util_style = "bold yellow"
+            else:
+                util_style = "bold red"
+
+            context_line.append(f"{utilization:.1f}%", style=util_style)
+            context_line.append(f" ({usage.total_tokens:,}/{usage.context_window:,} tokens)", style="dim")
+
+            # Add cost if available
+            if self._state.total_cost_usd > 0:
+                context_line.append("  Cost: ", style="dim")
+                context_line.append(f"${self._state.total_cost_usd:.4f}", style="bold")
+
+            elements.append(context_line)
 
         # Separator before progress bars
         elements.append(Rule(style="dim"))

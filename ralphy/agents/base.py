@@ -1,17 +1,22 @@
 """Classe de base pour les agents Ralphy."""
 
+from __future__ import annotations
+
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from ralphy.circuit_breaker import CircuitBreaker, CircuitBreakerContext
 from ralphy.claude import ClaudeResponse, ClaudeRunner
 from ralphy.config import ProjectConfig
 from ralphy.logger import get_logger
 from ralphy.state import Phase
+
+if TYPE_CHECKING:
+    from ralphy.claude import TokenUsage
 
 
 @dataclass
@@ -37,12 +42,14 @@ class BaseAgent(ABC):
         on_output: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
         feature_dir: Optional[Path] = None,
+        on_token_update: Optional[Callable[[TokenUsage, float], None]] = None,
     ):
         self.project_path = project_path
         self.config = config
         self.on_output = on_output
         self.model = model
         self.feature_dir = feature_dir
+        self.on_token_update = on_token_update
         self.logger = get_logger()
 
     @abstractmethod
@@ -198,6 +205,7 @@ class BaseAgent(ABC):
                 on_output=self.on_output,
                 circuit_breaker=circuit_breaker,
                 model=self.model,
+                on_token_update=self.on_token_update,
             )
 
             response = runner.run(prompt)

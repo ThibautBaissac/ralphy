@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import select
 import signal
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
@@ -27,6 +28,30 @@ ABORT_CHECK_INTERVAL = 0.1
 
 
 @dataclass
+class TokenUsage:
+    """Track token usage from Claude Code CLI."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    context_window: int = 200000
+    max_output_tokens: int = 64000
+
+    @property
+    def total_tokens(self) -> int:
+        """Total tokens used (input + output)."""
+        return self.input_tokens + self.output_tokens
+
+    @property
+    def context_utilization(self) -> float:
+        """Context window utilization as percentage (0-100)."""
+        if self.context_window <= 0:
+            return 0.0
+        return (self.total_tokens / self.context_window) * 100
+
+
+@dataclass
 class ClaudeResponse:
     """Réponse d'une invocation Claude."""
 
@@ -35,6 +60,143 @@ class ClaudeResponse:
     return_code: int
     timed_out: bool
     circuit_breaker_triggered: bool = False
+    token_usage: Optional[TokenUsage] = None
+    total_cost_usd: float = 0.0
+
+
+class JsonStreamParser:
+    """Parse Claude Code CLI stream-json output format.
+
+    Handles JSON lines from --output-format=stream-json and extracts:
+    - Text content from assistant messages for display/circuit breaker
+    - Token usage from result message's usage and modelUsage fields
+    """
+
+    def __init__(
+        self,
+        on_text: Optional[Callable[[str], None]] = None,
+        on_usage: Optional[Callable[[TokenUsage, float], None]] = None,
+    ):
+        self.on_text = on_text
+        self.on_usage = on_usage
+        self._token_usage = TokenUsage()
+        self._total_cost = 0.0
+
+    def parse_line(self, line: str) -> Optional[str]:
+        """Parse a JSON line and return extracted text content if any.
+
+        Args:
+            line: A single line of JSON output from Claude CLI
+
+        Returns:
+            Extracted text content, or None if no text in this line
+        """
+        line = line.strip()
+        if not line:
+            return None
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            # Not valid JSON, might be raw text output
+            return line if line else None
+
+        msg_type = data.get("type")
+
+        # Handle assistant messages - extract text content
+        if msg_type == "assistant":
+            return self._handle_assistant_message(data)
+
+        # Handle result message - extract final usage and cost
+        if msg_type == "result":
+            self._handle_result_message(data)
+            return None
+
+        return None
+
+    def _handle_assistant_message(self, data: dict) -> Optional[str]:
+        """Extract text content from assistant message and update token usage."""
+        message = data.get("message", {})
+        content_blocks = message.get("content", [])
+
+        # Update token usage from message.usage if present
+        usage = message.get("usage", {})
+        if usage:
+            self._update_usage_from_dict(usage)
+
+        # Extract text content
+        text_parts = []
+        for block in content_blocks:
+            if block.get("type") == "text":
+                text = block.get("text", "")
+                if text:
+                    text_parts.append(text)
+
+        if text_parts:
+            combined_text = "\n".join(text_parts)
+            if self.on_text:
+                self.on_text(combined_text)
+            return combined_text
+
+        return None
+
+    def _handle_result_message(self, data: dict) -> None:
+        """Extract final usage and cost from result message."""
+        # Get usage summary
+        usage = data.get("usage", {})
+        if usage:
+            self._update_usage_from_dict(usage)
+
+        # Get model-specific usage for context window size
+        model_usage = data.get("modelUsage", {})
+        for model_name, model_data in model_usage.items():
+            context_window = model_data.get("contextWindow")
+            if context_window:
+                self._token_usage.context_window = context_window
+            break  # Use first model's context window
+
+        # Get total cost
+        self._total_cost = data.get("total_cost_usd", 0.0) or data.get("totalCostUsd", 0.0)
+
+        # Trigger callback with final usage
+        if self.on_usage:
+            self.on_usage(self._token_usage, self._total_cost)
+
+    def _update_usage_from_dict(self, usage: dict) -> None:
+        """Update token usage from a usage dictionary."""
+        if "input_tokens" in usage:
+            self._token_usage.input_tokens = usage["input_tokens"]
+        if "inputTokens" in usage:
+            self._token_usage.input_tokens = usage["inputTokens"]
+
+        if "output_tokens" in usage:
+            self._token_usage.output_tokens = usage["output_tokens"]
+        if "outputTokens" in usage:
+            self._token_usage.output_tokens = usage["outputTokens"]
+
+        if "cache_read_input_tokens" in usage:
+            self._token_usage.cache_read_tokens = usage["cache_read_input_tokens"]
+        if "cacheReadInputTokens" in usage:
+            self._token_usage.cache_read_tokens = usage["cacheReadInputTokens"]
+
+        if "cache_creation_input_tokens" in usage:
+            self._token_usage.cache_creation_tokens = usage["cache_creation_input_tokens"]
+        if "cacheCreationInputTokens" in usage:
+            self._token_usage.cache_creation_tokens = usage["cacheCreationInputTokens"]
+
+        # Trigger callback on usage update
+        if self.on_usage:
+            self.on_usage(self._token_usage, self._total_cost)
+
+    @property
+    def token_usage(self) -> TokenUsage:
+        """Get current token usage."""
+        return self._token_usage
+
+    @property
+    def total_cost(self) -> float:
+        """Get total cost in USD."""
+        return self._total_cost
 
 
 class ClaudeRunner:
@@ -47,16 +209,19 @@ class ClaudeRunner:
         on_output: Optional[Callable[[str], None]] = None,
         circuit_breaker: Optional[CircuitBreaker] = None,
         model: Optional[str] = None,
+        on_token_update: Optional[Callable[[TokenUsage, float], None]] = None,
     ):
         self.working_dir = working_dir
         self.timeout = timeout
         self.on_output = on_output
         self.circuit_breaker = circuit_breaker
         self.model = model
+        self.on_token_update = on_token_update
         self._process: Optional[subprocess.Popen] = None
         self._abort_event = threading.Event()
         self._cb_triggered = False
         self._pid_file = working_dir / PID_FILE
+        self._json_parser: Optional[JsonStreamParser] = None
 
     def _save_pid(self, pid: int) -> None:
         """Sauvegarde le PID du process Claude."""
@@ -77,6 +242,9 @@ class ClaudeRunner:
         Utilise select() sur Unix pour une lecture non-bloquante avec timeout,
         permettant une vérification régulière de l'état d'abort.
         Intègre également le circuit breaker pour détecter les boucles infinies.
+
+        When JSON streaming is enabled, parses JSON lines to extract text content.
+        The extracted text is passed to on_output callback and used for circuit breaker.
         """
         # Capture une référence locale pour éviter les race conditions
         # quand le main thread set self._process = None dans le finally
@@ -116,17 +284,32 @@ class ClaudeRunner:
 
                 # Si on a une ligne complète, la traiter
                 if chunk == "\n":
-                    output_lines.append(buffer)
-                    if self.on_output:
-                        self.on_output(buffer)
-
-                    # Enregistre la sortie dans le circuit breaker
-                    if self.circuit_breaker:
-                        trigger = self.circuit_breaker.record_output(buffer)
-                        if trigger:
-                            self._cb_triggered = True
-                            self._abort_event.set()
-                            break
+                    # Parse JSON line if parser is available
+                    if self._json_parser:
+                        text_content = self._json_parser.parse_line(buffer)
+                        if text_content:
+                            output_lines.append(text_content + "\n")
+                            if self.on_output:
+                                self.on_output(text_content)
+                            # Enregistre la sortie dans le circuit breaker
+                            if self.circuit_breaker:
+                                trigger = self.circuit_breaker.record_output(text_content)
+                                if trigger:
+                                    self._cb_triggered = True
+                                    self._abort_event.set()
+                                    break
+                    else:
+                        # Non-JSON mode: process raw line
+                        output_lines.append(buffer)
+                        if self.on_output:
+                            self.on_output(buffer)
+                        # Enregistre la sortie dans le circuit breaker
+                        if self.circuit_breaker:
+                            trigger = self.circuit_breaker.record_output(buffer)
+                            if trigger:
+                                self._cb_triggered = True
+                                self._abort_event.set()
+                                break
 
                     buffer = ""
 
@@ -136,9 +319,16 @@ class ClaudeRunner:
 
         # Flush du buffer restant
         if buffer and not self._abort_event.is_set():
-            output_lines.append(buffer)
-            if self.on_output:
-                self.on_output(buffer)
+            if self._json_parser:
+                text_content = self._json_parser.parse_line(buffer)
+                if text_content:
+                    output_lines.append(text_content)
+                    if self.on_output:
+                        self.on_output(text_content)
+            else:
+                output_lines.append(buffer)
+                if self.on_output:
+                    self.on_output(buffer)
 
     def _cb_monitor_task_stagnation(self) -> None:
         """Thread daemon qui vérifie la stagnation des tâches.
@@ -170,10 +360,18 @@ class ClaudeRunner:
         reader_thread = None
         cb_monitor_thread = None
 
+        # Create JSON parser with token update callback
+        self._json_parser = JsonStreamParser(
+            on_text=None,  # Text handled in _read_output_with_abort_check
+            on_usage=self.on_token_update,
+        )
+
         cmd = [
             "claude",
             "--print",
             "--dangerously-skip-permissions",
+            "--output-format=stream-json",
+            "--verbose",
         ]
 
         # Add model if specified
@@ -244,6 +442,8 @@ class ClaudeRunner:
                 return_code=return_code,
                 timed_out=timed_out,
                 circuit_breaker_triggered=self._cb_triggered,
+                token_usage=self._json_parser.token_usage if self._json_parser else None,
+                total_cost_usd=self._json_parser.total_cost if self._json_parser else 0.0,
             )
 
         except FileNotFoundError:

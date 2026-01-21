@@ -1,7 +1,9 @@
 """Orchestrateur principal du workflow Ralphy."""
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from ralphy.agents import DevAgent, PRAgent, QAAgent, SpecAgent
 from ralphy.config import ProjectConfig, ensure_feature_dir, ensure_ralph_dir, load_config
@@ -9,6 +11,9 @@ from ralphy.logger import get_logger
 from ralphy.progress import ProgressDisplay
 from ralphy.state import Phase, StateManager
 from ralphy.validation import HumanValidator
+
+if TYPE_CHECKING:
+    from ralphy.claude import TokenUsage
 
 
 class WorkflowError(Exception):
@@ -92,6 +97,11 @@ class Orchestrator:
                 )
                 completed, total = agent.count_task_status()
                 self.state_manager.update_tasks(completed, total)
+
+    def _on_token_update(self, usage: TokenUsage, cost: float) -> None:
+        """Callback appelé lors de la mise à jour des tokens."""
+        if self._progress_display and self._progress_display.is_active:
+            self._progress_display.update_token_usage(usage, cost)
 
     def _spec_artifacts_valid(self) -> bool:
         """Vérifie si les artéfacts de la phase SPECIFICATION sont valides.
@@ -403,6 +413,7 @@ class Orchestrator:
                 on_output=self.on_output,
                 model=self.config.models.specification,
                 feature_dir=self.feature_dir,
+                on_token_update=self._on_token_update,
             )
 
             result = agent.run(timeout=self.config.timeouts.specification)
@@ -469,6 +480,7 @@ class Orchestrator:
                 on_output=self.on_output,
                 model=self.config.models.implementation,
                 feature_dir=self.feature_dir,
+                on_token_update=self._on_token_update,
             )
 
             result = agent.run(
@@ -509,6 +521,7 @@ class Orchestrator:
                 on_output=self.on_output,
                 model=self.config.models.qa,
                 feature_dir=self.feature_dir,
+                on_token_update=self._on_token_update,
             )
 
             result = agent.run(timeout=self.config.timeouts.qa)
@@ -558,6 +571,7 @@ class Orchestrator:
                 model=self.config.models.pr,
                 feature_dir=self.feature_dir,
                 feature_name=self.feature_name,
+                on_token_update=self._on_token_update,
             )
 
             result = agent.run(timeout=self.config.timeouts.pr)
