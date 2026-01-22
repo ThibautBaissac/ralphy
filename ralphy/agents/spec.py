@@ -5,6 +5,7 @@ from typing import Optional
 
 from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.claude import ClaudeResponse
+from ralphy.constants import MIN_SPEC_FILE_SIZE_BYTES, MIN_TASKS_FILE_SIZE_BYTES
 
 
 class SpecAgent(BaseAgent):
@@ -54,8 +55,8 @@ class SpecAgent(BaseAgent):
 
         # Success requires both EXIT_SIGNAL and valid files
         # This ensures protocol consistency with other agents
-        spec_has_content = spec_path.stat().st_size > 1000
-        tasks_has_content = tasks_path.stat().st_size > 500
+        spec_has_content = spec_path.stat().st_size > MIN_SPEC_FILE_SIZE_BYTES
+        tasks_has_content = tasks_path.stat().st_size > MIN_TASKS_FILE_SIZE_BYTES
         files_valid = spec_has_content and tasks_has_content
 
         return AgentResult(

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional, Type
 
 from ralphy.agents import DevAgent, PRAgent, QAAgent, SpecAgent
+from ralphy.agents.qa import parse_qa_report_summary
 from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.config import ProjectConfig, ensure_feature_dir, ensure_ralph_dir, load_config
 from ralphy.constants import (
@@ -37,7 +38,23 @@ class TransitionError(WorkflowError):
 
 
 class Orchestrator:
-    """Orchestrator for the Ralphy workflow."""
+    """Central coordinator for the Ralphy workflow.
+
+    This class orchestrates the entire workflow lifecycle, managing:
+    - Phase transitions via StateManager (SPECIFICATION → IMPLEMENTATION → QA → PR)
+    - Agent execution with timeout enforcement and retry logic
+    - Human validation gates between phases
+    - Progress display coordination (Rich Live UI)
+    - Workflow journaling for audit and resume capability
+    - Task-level checkpointing for mid-implementation resume
+
+    Design note: While this class has multiple responsibilities, they are all
+    related to workflow coordination - its single reason to change is "how
+    the workflow is orchestrated." Extracting these into separate classes
+    would fragment the coordination logic without clear benefit, as they
+    all share state (feature_dir, config, state_manager) and work together
+    as a cohesive unit during workflow execution.
+    """
 
     def __init__(
         self,
@@ -180,26 +197,12 @@ class Orchestrator:
         This decouples the validation phase from the QAAgent instance,
         allowing workflow resume from AWAITING_QA_VALIDATION phase.
         """
-        import re
-
         qa_path = self.feature_dir / "QA_REPORT.md"
         if not qa_path.exists():
-            return {"score": "N/A", "critical_issues": 0}
+            return parse_qa_report_summary(None)
 
         content = qa_path.read_text(encoding="utf-8")
-
-        # Extract score
-        score = "N/A"
-        match = re.search(r"[Ss]core[:\s]+(\d+)/10", content)
-        if match:
-            score = f"{match.group(1)}/10"
-
-        # Count critical issues
-        critical_count = content.lower().count("critique") + content.lower().count(
-            "critical"
-        )
-
-        return {"score": score, "critical_issues": critical_count}
+        return parse_qa_report_summary(content)
 
     def _determine_resume_phase(self) -> Optional[Phase]:
         """Détermine la phase depuis laquelle reprendre le workflow.
