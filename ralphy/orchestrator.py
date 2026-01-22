@@ -16,7 +16,7 @@ from ralphy.constants import (
 )
 from ralphy.logger import get_logger
 from ralphy.progress import ProgressDisplay
-from ralphy.state import Phase, StateManager
+from ralphy.state import PHASE_ORDER, Phase, StateManager
 from ralphy.validation import HumanValidator
 
 if TYPE_CHECKING:
@@ -222,18 +222,9 @@ class Orchestrator:
         if not resume_from:
             return False
 
-        phase_order = [
-            Phase.SPECIFICATION,
-            Phase.AWAITING_SPEC_VALIDATION,
-            Phase.IMPLEMENTATION,
-            Phase.QA,
-            Phase.AWAITING_QA_VALIDATION,
-            Phase.PR,
-        ]
-
         try:
-            phase_idx = phase_order.index(phase)
-            resume_idx = phase_order.index(resume_from)
+            phase_idx = PHASE_ORDER.index(phase)
+            resume_idx = PHASE_ORDER.index(resume_from)
             return phase_idx < resume_idx
         except ValueError:
             return False
@@ -477,6 +468,91 @@ class Orchestrator:
         finally:
             self._stop_phase_progress()
 
+    def _run_agent_phase_extended(
+        self,
+        phase: Phase,
+        phase_name: str,
+        agent_class: Type[BaseAgent],
+        timeout: int,
+        model: str,
+        total_tasks: int = 0,
+        agent_kwargs: Optional[dict[str, Any]] = None,
+        run_kwargs: Optional[dict[str, Any]] = None,
+        post_run: Optional[Callable[[AgentResult, BaseAgent], None]] = None,
+        pre_start: Optional[Callable[[], None]] = None,
+    ) -> bool:
+        """Extended agent phase runner with task count and pre-start hook.
+
+        Same as _run_agent_phase but with additional support for:
+        - total_tasks: Number of tasks to display in progress bar
+        - pre_start: Callback after progress display starts, before agent runs
+
+        Args:
+            phase: The workflow phase to transition to.
+            phase_name: Display name for logging and progress.
+            agent_class: The agent class to instantiate.
+            timeout: Timeout in seconds for agent execution.
+            model: Model to use for the agent.
+            total_tasks: Number of tasks for progress display (0 = no task bar).
+            agent_kwargs: Additional kwargs for agent constructor.
+            run_kwargs: Additional kwargs for agent.run().
+            post_run: Optional callback after successful run (receives result and agent).
+            pre_start: Optional callback after progress display starts.
+
+        Returns:
+            True if phase completed successfully, False otherwise.
+        """
+        self.logger.phase(phase_name)
+        self._safe_transition(phase)
+
+        self._start_phase_progress(
+            phase_name,
+            total_tasks=total_tasks,
+            model=model,
+            timeout=timeout,
+        )
+
+        # Optional pre-start hook (e.g., restore progress for resumed tasks)
+        if pre_start:
+            pre_start()
+
+        try:
+            # Build agent with common + custom kwargs
+            kwargs: dict[str, Any] = {
+                "project_path": self.project_path,
+                "config": self.config,
+                "on_output": self.on_output,
+                "model": model,
+                "feature_dir": self.feature_dir,
+                "on_token_update": self._on_token_update,
+            }
+            if agent_kwargs:
+                kwargs.update(agent_kwargs)
+
+            agent = agent_class(**kwargs)
+
+            # Run agent with timeout + custom kwargs
+            run_args: dict[str, Any] = {"timeout": timeout}
+            if run_kwargs:
+                run_args.update(run_kwargs)
+
+            result = agent.run(**run_args)
+
+            if self._aborted:
+                return False
+
+            if not result.success:
+                self.state_manager.set_failed(result.error_message)
+                return False
+
+            # Optional post-run callback
+            if post_run:
+                post_run(result, agent)
+
+            return True
+        finally:
+            self._stop_phase_progress()
+
     def _run_specification_phase(self) -> bool:
         """Exécute la phase de spécification."""
 
@@ -513,58 +589,47 @@ class Orchestrator:
         return True
 
     def _run_implementation_phase(self) -> bool:
-        """Exécute la phase d'implémentation."""
-        self.logger.phase("IMPLEMENTATION")
-        self._safe_transition(Phase.IMPLEMENTATION)
+        """Exécute la phase d'implémentation.
 
+        This phase has special handling for:
+        - Task resume from checkpoint
+        - Progress display with task count
+        - Post-run task status update
+        """
         # Determine if we should resume from a specific task
         resume_task_id = self._get_implementation_resume_task()
         if resume_task_id:
             self.logger.info(f"Reprise de l'implémentation depuis la tâche {resume_task_id}")
 
-        # Récupère le nombre de tâches pour la progress bar
+        # Pre-run: restore progress display for resumed tasks
         completed_tasks = self.state_manager.state.tasks_completed
         total_tasks = self.state_manager.state.tasks_total
-        self._start_phase_progress(
-            "IMPLEMENTATION",
-            total_tasks,
-            model=self.config.models.implementation,
-            timeout=self.config.timeouts.implementation,
-        )
 
-        # Si on reprend avec des tâches déjà complétées, met à jour l'affichage
-        if completed_tasks > 0 and self._progress_display:
-            self._progress_display.update_tasks(completed_tasks, total_tasks)
+        def pre_start_hook() -> None:
+            """Update progress display with existing task count if resuming."""
+            if completed_tasks > 0 and self._progress_display:
+                self._progress_display.update_tasks(completed_tasks, total_tasks)
 
-        try:
-            agent = DevAgent(
-                project_path=self.project_path,
-                config=self.config,
-                on_output=self.on_output,
-                model=self.config.models.implementation,
-                feature_dir=self.feature_dir,
-                on_token_update=self._on_token_update,
-            )
-
-            result = agent.run(
-                timeout=self.config.timeouts.implementation,
-                start_from_task=resume_task_id,
-            )
-
+        def on_impl_complete(result: AgentResult, agent: BaseAgent) -> None:
+            """Post-run callback to update task counter."""
             if self._aborted:
-                return False
-
-            if not result.success:
-                self.state_manager.set_failed(result.error_message)
-                return False
-
-            # Met à jour le compteur de tâches
-            completed, total = agent.count_task_status()
+                return
+            dev_agent = agent  # type: DevAgent
+            completed, total = dev_agent.count_task_status()
             self.state_manager.update_tasks(completed, total)
 
-            return True
-        finally:
-            self._stop_phase_progress()
+        # Use extended _run_agent_phase with implementation-specific params
+        return self._run_agent_phase_extended(
+            phase=Phase.IMPLEMENTATION,
+            phase_name="IMPLEMENTATION",
+            agent_class=DevAgent,
+            timeout=self.config.timeouts.implementation,
+            model=self.config.models.implementation,
+            total_tasks=total_tasks,
+            run_kwargs={"start_from_task": resume_task_id},
+            post_run=on_impl_complete,
+            pre_start=pre_start_hook,
+        )
 
     def _run_qa_phase(self) -> bool:
         """Exécute la phase QA."""

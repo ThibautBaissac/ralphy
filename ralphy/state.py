@@ -36,6 +36,18 @@ class Status(str, Enum):
     FAILED = "failed"
 
 
+# Ordre canonique des phases du workflow (pour la logique de reprise)
+# Utilisé par orchestrator.py pour déterminer quelles phases sauter
+PHASE_ORDER: list[Phase] = [
+    Phase.SPECIFICATION,
+    Phase.AWAITING_SPEC_VALIDATION,
+    Phase.IMPLEMENTATION,
+    Phase.QA,
+    Phase.AWAITING_QA_VALIDATION,
+    Phase.PR,
+]
+
+
 # Transitions valides entre phases
 # Note: IDLE peut transitionner vers toutes les phases actives pour supporter
 # la reprise du workflow après une interruption (FAILED -> IDLE -> phase suivante)

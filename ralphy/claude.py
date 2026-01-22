@@ -229,6 +229,7 @@ class ClaudeRunner:
         self._process: Optional[subprocess.Popen] = None
         self._abort_event = threading.Event()
         self._cb_triggered = False
+        self._cb_lock = threading.Lock()  # Protects _cb_triggered across threads
         self._pid_file = working_dir / PID_FILE
         self._json_parser: Optional[JsonStreamParser] = None
 
@@ -278,7 +279,8 @@ class ClaudeRunner:
                         if self.circuit_breaker:
                             trigger = self.circuit_breaker.check_inactivity()
                             if trigger:
-                                self._cb_triggered = True
+                                with self._cb_lock:
+                                    self._cb_triggered = True
                                 self._abort_event.set()
                                 break
                         continue
@@ -305,7 +307,8 @@ class ClaudeRunner:
                                 text_content or "[system]"
                             )
                             if trigger:
-                                self._cb_triggered = True
+                                with self._cb_lock:
+                                    self._cb_triggered = True
                                 self._abort_event.set()
                                 break
                         if text_content:
@@ -321,7 +324,8 @@ class ClaudeRunner:
                         if self.circuit_breaker:
                             trigger = self.circuit_breaker.record_output(line_content)
                             if trigger:
-                                self._cb_triggered = True
+                                with self._cb_lock:
+                                    self._cb_triggered = True
                                 self._abort_event.set()
                                 break
 
@@ -355,7 +359,8 @@ class ClaudeRunner:
             if self.circuit_breaker:
                 trigger = self.circuit_breaker.check_task_stagnation()
                 if trigger:
-                    self._cb_triggered = True
+                    with self._cb_lock:
+                        self._cb_triggered = True
                     self._abort_event.set()
                     break
             # Vérifie toutes les secondes
@@ -369,7 +374,8 @@ class ClaudeRunner:
 
         # Reset l'état d'abort et du circuit breaker
         self._abort_event.clear()
-        self._cb_triggered = False
+        with self._cb_lock:
+            self._cb_triggered = False
 
         # Initialize thread references for finally block
         reader_thread = None
@@ -429,7 +435,10 @@ class ClaudeRunner:
             while elapsed < self.timeout:
                 if self._abort_event.is_set():
                     self._process.kill()
-                    if self._cb_triggered:
+                    self._process.wait()  # Reap process to get proper return code
+                    with self._cb_lock:
+                        cb_triggered = self._cb_triggered
+                    if cb_triggered:
                         logger.info("Claude interrompu par circuit breaker")
                     else:
                         logger.info("Claude interrompu par abort")
@@ -445,18 +454,22 @@ class ClaudeRunner:
             if elapsed >= self.timeout and self._process.poll() is None:
                 timed_out = True
                 self._process.kill()
+                self._process.wait()  # Reap process to get proper return code
                 logger.error(f"Claude timeout après {self.timeout}s")
 
             return_code = self._process.returncode if self._process.returncode is not None else -1
             full_output = "".join(output_lines)
             exit_signal = EXIT_SIGNAL in full_output
 
+            with self._cb_lock:
+                cb_triggered = self._cb_triggered
+
             return ClaudeResponse(
                 output=full_output,
                 exit_signal=exit_signal,
                 return_code=return_code,
                 timed_out=timed_out,
-                circuit_breaker_triggered=self._cb_triggered,
+                circuit_breaker_triggered=cb_triggered,
                 token_usage=self._json_parser.token_usage if self._json_parser else None,
                 total_cost_usd=self._json_parser.total_cost if self._json_parser else 0.0,
             )

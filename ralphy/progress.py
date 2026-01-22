@@ -421,9 +421,16 @@ class ProgressDisplay:
         return f"{minutes}m"
 
     def _refresh(self) -> None:
-        """Rafraîchit l'affichage."""
-        if self._live and self._active:
-            self._live.update(self._render())
+        """Rafraîchit l'affichage.
+
+        Note: This method expects the caller to hold self._lock.
+        It performs a defensive check to avoid race conditions
+        with stop() which may set _live to None.
+        """
+        # Capture local reference to avoid race with stop()
+        live = self._live
+        if live and self._active:
+            live.update(self._render())
 
     def _render(self) -> Panel:
         """Génère le rendu du panel de progression."""
