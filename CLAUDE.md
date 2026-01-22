@@ -8,7 +8,7 @@ Ralphy is an AI-powered development automation tool that transforms a Product Re
 
 ## Development Principles
 
-See [DEVELOPMENT_PRINCIPLES.md](./DEVELOPMENT_PRINCIPLES.md) for the core software development principles (KISS, SRP, DRY, YAGNI, modularity, etc.) that guide how we write and organize code in this project.
+See @DEVELOPMENT_PRINCIPLES.md for the core software development principles (KISS, SRP, DRY, YAGNI, modularity, etc.) that guide how we write and organize code in this project.
 
 ## Development Commands
 
