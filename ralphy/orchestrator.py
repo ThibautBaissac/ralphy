@@ -14,8 +14,9 @@ from ralphy.constants import (
     MIN_SPEC_FILE_SIZE_BYTES,
     MIN_TASKS_FILE_SIZE_BYTES,
 )
+from ralphy.journal import WorkflowJournal
 from ralphy.logger import get_logger
-from ralphy.progress import ProgressDisplay
+from ralphy.progress import Activity, ProgressDisplay
 from ralphy.state import PHASE_ORDER, Phase, StateManager
 from ralphy.validation import HumanValidator
 
@@ -57,12 +58,25 @@ class Orchestrator:
         self._show_progress = show_progress
         self._progress_display: Optional[ProgressDisplay] = None
 
+        # Workflow journal for progress persistence
+        self._journal = WorkflowJournal(self.feature_dir, feature_name)
+
+        # Track current phase for journal end_phase calls
+        self._current_phase_model: str = ""
+        self._current_phase_timeout: int = 0
+        self._current_phase_tasks_total: int = 0
+        self._last_token_usage: Optional[TokenUsage] = None
+        self._last_cost: float = 0.0
+
         # Cached DevAgent for query operations (count_task_status, get_next_pending_task_after)
         self._cached_dev_agent: Optional[DevAgent] = None
 
         # Configure output callback
         if show_progress:
-            self._progress_display = ProgressDisplay(on_task_event=self._on_task_event)
+            self._progress_display = ProgressDisplay(
+                on_task_event=self._on_task_event,
+                on_activity=self._on_activity,
+            )
             self.on_output = self._progress_output
         else:
             self.on_output = on_output or self._default_output
@@ -106,6 +120,8 @@ class Orchestrator:
             # Checkpoint task as in_progress
             if task_id:
                 self.state_manager.checkpoint_task(task_id, "in_progress")
+            # Log to journal
+            self._journal.record_task_event(event_type, task_id, task_name)
         elif event_type == "complete":
             if task_name:
                 self.logger.task_complete(f"Tâche {task_id}: {task_name}")
@@ -118,11 +134,22 @@ class Orchestrator:
                 self.state_manager.checkpoint_task(task_id, "completed")
                 completed, total = self._dev_agent_for_queries.count_task_status()
                 self.state_manager.update_tasks(completed, total)
+            # Log to journal
+            self._journal.record_task_event(event_type, task_id, task_name)
+
+    def _on_activity(self, activity: Activity) -> None:
+        """Callback appelé lors de la détection d'une activité."""
+        self._journal.record_activity(activity)
 
     def _on_token_update(self, usage: TokenUsage, cost: float) -> None:
         """Callback appelé lors de la mise à jour des tokens."""
         if self._progress_display and self._progress_display.is_active:
             self._progress_display.update_token_usage(usage, cost)
+        # Track for phase end summary
+        self._last_token_usage = usage
+        self._last_cost = cost
+        # Log to journal
+        self._journal.record_token_update(usage, cost)
 
     def _spec_artifacts_valid(self) -> bool:
         """Vérifie si les artéfacts de la phase SPECIFICATION sont valides.
@@ -248,6 +275,21 @@ class Orchestrator:
         timeout: int = 0,
     ) -> None:
         """Démarre l'affichage de progression pour une phase."""
+        # Track phase info for journal end_phase calls
+        self._current_phase_model = model
+        self._current_phase_timeout = timeout
+        self._current_phase_tasks_total = total_tasks
+        self._last_token_usage = None
+        self._last_cost = 0.0
+
+        # Log to journal
+        self._journal.start_phase(
+            phase=phase_name,
+            model=model,
+            timeout=timeout,
+            tasks_total=total_tasks,
+        )
+
         if self._progress_display and self._show_progress:
             self.logger.set_live_mode(True)
             self._progress_display.start(
@@ -258,8 +300,33 @@ class Orchestrator:
                 feature_name=self.feature_name,
             )
 
-    def _stop_phase_progress(self) -> None:
-        """Arrête l'affichage de progression."""
+    def _stop_phase_progress(
+        self,
+        outcome: str = "unknown",
+        tasks_completed: int = 0,
+    ) -> None:
+        """Arrête l'affichage de progression et log la fin de phase.
+
+        Args:
+            outcome: Phase outcome (e.g., "success", "failed", "timeout")
+            tasks_completed: Number of tasks completed in this phase
+        """
+        # Log phase end to journal
+        token_usage_dict = None
+        if self._last_token_usage:
+            token_usage_dict = {
+                "input_tokens": self._last_token_usage.input_tokens,
+                "output_tokens": self._last_token_usage.output_tokens,
+                "cache_read_tokens": self._last_token_usage.cache_read_tokens,
+                "cache_creation_tokens": self._last_token_usage.cache_creation_tokens,
+            }
+        self._journal.end_phase(
+            outcome=outcome,
+            token_usage=token_usage_dict,
+            cost=self._last_cost,
+            tasks_completed=tasks_completed,
+        )
+
         if self._progress_display and self._progress_display.is_active:
             self._progress_display.stop()
             self.logger.set_live_mode(False)
@@ -270,7 +337,11 @@ class Orchestrator:
         Args:
             fresh: Si True, force un redémarrage complet sans reprise.
         """
+        workflow_outcome = "unknown"
         try:
+            # Start journal at workflow begin
+            self._journal.start_workflow(fresh=fresh)
+
             self._validate_prerequisites()
             ensure_ralph_dir(self.project_path)
             ensure_feature_dir(self.project_path, self.feature_name)
@@ -289,6 +360,7 @@ class Orchestrator:
             # Phase 1: Specification
             if not self._should_skip_phase(Phase.SPECIFICATION, resume_phase):
                 if not self._run_specification_phase():
+                    workflow_outcome = "failed"
                     return False
                 self.state_manager.mark_phase_completed(Phase.SPECIFICATION)
             else:
@@ -298,6 +370,7 @@ class Orchestrator:
             # Validation #1
             if not self._should_skip_phase(Phase.AWAITING_SPEC_VALIDATION, resume_phase):
                 if not self._run_spec_validation():
+                    workflow_outcome = "rejected"
                     return False
                 self.state_manager.mark_phase_completed(Phase.AWAITING_SPEC_VALIDATION)
             else:
@@ -306,6 +379,7 @@ class Orchestrator:
             # Phase 2: Implementation
             if not self._should_skip_phase(Phase.IMPLEMENTATION, resume_phase):
                 if not self._run_implementation_phase():
+                    workflow_outcome = "failed"
                     return False
                 self.state_manager.mark_phase_completed(Phase.IMPLEMENTATION)
             else:
@@ -314,6 +388,7 @@ class Orchestrator:
             # Phase 3: QA
             if not self._should_skip_phase(Phase.QA, resume_phase):
                 if not self._run_qa_phase():
+                    workflow_outcome = "failed"
                     return False
                 self.state_manager.mark_phase_completed(Phase.QA)
             else:
@@ -322,6 +397,7 @@ class Orchestrator:
             # Validation #2
             if not self._should_skip_phase(Phase.AWAITING_QA_VALIDATION, resume_phase):
                 if not self._run_qa_validation():
+                    workflow_outcome = "rejected"
                     return False
                 self.state_manager.mark_phase_completed(Phase.AWAITING_QA_VALIDATION)
             else:
@@ -330,21 +406,29 @@ class Orchestrator:
             # Phase 4: PR
             if not self._should_skip_phase(Phase.PR, resume_phase):
                 if not self._run_pr_phase():
+                    workflow_outcome = "failed"
                     return False
                 self.state_manager.mark_phase_completed(Phase.PR)
 
             self._safe_transition(Phase.COMPLETED)
             self.logger.success("Workflow terminé avec succès!")
+            workflow_outcome = "completed"
             return True
 
         except WorkflowError as e:
             self.state_manager.set_failed(str(e))
             self.logger.error(f"Workflow échoué: {e}")
+            self._journal.record_error(str(e), "workflow_error")
+            workflow_outcome = "failed"
             return False
         except KeyboardInterrupt:
             self.state_manager.set_failed("Interrompu par l'utilisateur")
             self.logger.warn("Workflow interrompu")
+            workflow_outcome = "aborted"
             return False
+        finally:
+            # End journal with final outcome
+            self._journal.end_workflow(workflow_outcome)
 
     def abort(self) -> None:
         """Abort le workflow en cours."""
@@ -434,6 +518,7 @@ class Orchestrator:
             timeout=timeout,
         )
 
+        phase_outcome = "unknown"
         try:
             # Build agent with common + custom kwargs
             kwargs: dict[str, Any] = {
@@ -458,15 +543,17 @@ class Orchestrator:
 
             if not result.success:
                 self.state_manager.set_failed(result.error_message)
+                phase_outcome = "failed"
                 return False
 
             # Optional post-run callback
             if post_run:
                 post_run(result, agent)
 
+            phase_outcome = "success"
             return True
         finally:
-            self._stop_phase_progress()
+            self._stop_phase_progress(outcome=phase_outcome)
 
     def _run_agent_phase_extended(
         self,
@@ -516,6 +603,8 @@ class Orchestrator:
         if pre_start:
             pre_start()
 
+        phase_outcome = "unknown"
+        tasks_completed = 0
         try:
             # Build agent with common + custom kwargs
             kwargs: dict[str, Any] = {
@@ -539,19 +628,25 @@ class Orchestrator:
             result = agent.run(**run_args)
 
             if self._aborted:
+                phase_outcome = "aborted"
+                tasks_completed = self.state_manager.state.tasks_completed
                 return False
 
             if not result.success:
                 self.state_manager.set_failed(result.error_message)
+                phase_outcome = "failed"
+                tasks_completed = self.state_manager.state.tasks_completed
                 return False
 
             # Optional post-run callback
             if post_run:
                 post_run(result, agent)
 
+            phase_outcome = "success"
+            tasks_completed = self.state_manager.state.tasks_completed
             return True
         finally:
-            self._stop_phase_progress()
+            self._stop_phase_progress(outcome=phase_outcome, tasks_completed=tasks_completed)
 
     def _run_specification_phase(self) -> bool:
         """Exécute la phase de spécification."""
@@ -580,6 +675,13 @@ class Orchestrator:
         validation = self.validator.request_spec_validation(
             self.feature_dir,
             tasks_count,
+        )
+
+        # Log validation event to journal
+        self._journal.record_validation(
+            phase="SPECIFICATION",
+            approved=validation.approved,
+            feedback=validation.comment,
         )
 
         if not validation.approved:
@@ -651,6 +753,13 @@ class Orchestrator:
         validation = self.validator.request_qa_validation(
             self.feature_dir,
             qa_summary,
+        )
+
+        # Log validation event to journal
+        self._journal.record_validation(
+            phase="QA",
+            approved=validation.approved,
+            feedback=validation.comment,
         )
 
         if not validation.approved:

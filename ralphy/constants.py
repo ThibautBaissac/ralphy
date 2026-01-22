@@ -72,3 +72,10 @@ SPEC_PREVIEW_LINES = 20  # Lines to show in spec validation summary
 
 DEFAULT_CONTEXT_WINDOW = 200000  # Claude context window size
 DEFAULT_MAX_OUTPUT_TOKENS = 64000  # Claude max output tokens
+
+# =============================================================================
+# JOURNAL FILE NAMES
+# =============================================================================
+
+JOURNAL_FILE = "progress.jsonl"  # Real-time event log (append-only)
+JOURNAL_SUMMARY_FILE = "progress_summary.json"  # Aggregate summary at workflow end

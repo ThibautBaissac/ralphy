@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -198,6 +198,7 @@ class ProgressDisplay:
         self,
         console: Optional[Console] = None,
         on_task_event: Optional[callable] = None,
+        on_activity: Optional[Callable[[Activity], None]] = None,
     ):
         self.console = console or Console()
         self._lock = threading.Lock()
@@ -206,6 +207,7 @@ class ProgressDisplay:
         self._parser = OutputParser()
         self._active = False
         self._on_task_event = on_task_event  # Callback(event_type, task_id, task_name)
+        self._on_activity = on_activity  # Callback(activity) for detected activities
 
         # Progress bars
         self._phase_progress = Progress(
@@ -332,6 +334,10 @@ class ProgressDisplay:
             activity = self._parser.parse(text)
             if activity:
                 self._state.current_activity = activity
+
+                # Invoke activity callback for journal logging
+                if self._on_activity:
+                    self._on_activity(activity)
 
                 # Gère le début d'une tâche
                 if activity.type == ActivityType.TASK_START:
