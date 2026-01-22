@@ -1,4 +1,4 @@
-"""Agent de développement - Implémente les tâches définies dans TASKS.md."""
+"""Development agent - Implements tasks defined in TASKS.md."""
 
 import re
 from typing import Optional, Tuple
@@ -8,31 +8,31 @@ from ralphy.claude import ClaudeResponse
 
 
 class DevAgent(BaseAgent):
-    """Agent qui implémente le code selon TASKS.md."""
+    """Agent that implements code according to TASKS.md."""
 
     name = "dev-agent"
     prompt_file = "dev_agent.md"
 
     def build_prompt(self, start_from_task: Optional[str] = None) -> str:
-        """Construit le prompt avec les specs et tâches.
+        """Builds the prompt with specs and tasks.
 
         Args:
-            start_from_task: ID de tâche depuis laquelle reprendre (ex: "1.8").
-                             Si fourni, l'agent sautera les tâches complétées.
+            start_from_task: Task ID to resume from (e.g., "1.8").
+                             If provided, the agent will skip completed tasks.
         """
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template dev_agent.md non trouvé")
+            self.logger.error("Template dev_agent.md not found")
             return ""
 
         spec_content = self.read_feature_file("SPEC.md")
         if not spec_content:
-            self.logger.error("SPEC.md non trouvé dans le dossier feature")
+            self.logger.error("SPEC.md not found in feature directory")
             return ""
 
         tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
-            self.logger.error("TASKS.md non trouvé dans le dossier feature")
+            self.logger.error("TASKS.md not found in feature directory")
             return ""
 
         # Build resume instruction if resuming from a specific task
@@ -50,24 +50,24 @@ class DevAgent(BaseAgent):
         )
 
     def _build_resume_instruction(self, task_id: str) -> str:
-        """Construit l'instruction de resume pour le prompt."""
+        """Builds the resume instruction for the prompt."""
         return f"""
-## MODE REPRISE ACTIF
+## RESUME MODE ACTIVE
 
-**IMPORTANT**: Tu reprends depuis une session précédente interrompue.
+**IMPORTANT**: You are resuming from a previous interrupted session.
 
-- Saute toutes les tâches AVANT la tâche {task_id} (elles sont déjà complétées)
-- Commence directement par la tâche {task_id}
-- Si la tâche {task_id} a le statut `in_progress`, elle a été interrompue - réimplémente-la
-- Si la tâche {task_id} a le statut `pending`, commence normalement
-- Continue séquentiellement jusqu'à la fin
-- NE réimplémente PAS les tâches marquées `completed`
+- Skip all tasks BEFORE task {task_id} (they are already completed)
+- Start directly with task {task_id}
+- If task {task_id} has status `in_progress`, it was interrupted - reimplement it
+- If task {task_id} has status `pending`, proceed normally
+- Continue sequentially until the end
+- DO NOT reimplement tasks marked as `completed`
 
-Vérifie: Avant de commencer, lis `TASKS.md` et confirme que les tâches avant {task_id} sont `completed`.
+Verify: Before starting, read `TASKS.md` and confirm that tasks before {task_id} are `completed`.
 """
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
-        """Vérifie que les tâches ont été implémentées."""
+        """Verifies that tasks have been implemented."""
         completed, total = self.count_task_status()
         files_generated = self._detect_generated_files()
 
@@ -76,61 +76,61 @@ Vérifie: Avant de commencer, lis `TASKS.md` et confirme que les tâches avant {
                 success=False,
                 output=response.output,
                 files_generated=files_generated,
-                error_message=f"Tâches incomplètes: {completed}/{total}",
+                error_message=f"Incomplete tasks: {completed}/{total}",
             )
 
         return AgentResult(
             success=response.exit_signal,
             output=response.output,
             files_generated=files_generated,
-            error_message=None if response.exit_signal else "EXIT_SIGNAL non reçu",
+            error_message=None if response.exit_signal else "EXIT_SIGNAL not received",
         )
 
     def count_task_status(self) -> Tuple[int, int]:
-        """Compte les tâches completed et le total."""
+        """Counts completed tasks and total."""
         tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return 0, 0
 
-        # Compte le total de tâches (format: ### Tâche X.Y ou ## Tâche X)
-        total = len(re.findall(r"#{2,3}\s*Tâche\s*[\d.]+", tasks_content))
-        # Compte les tâches complétées
-        completed = len(re.findall(r"\*\*Statut\*\*:\s*completed", tasks_content, re.IGNORECASE))
+        # Count total tasks (format: ### Task X.Y or ## Task X)
+        total = len(re.findall(r"#{2,3}\s*Task\s*[\d.]+", tasks_content, re.IGNORECASE))
+        # Count completed tasks
+        completed = len(re.findall(r"\*\*Status\*\*:\s*completed", tasks_content, re.IGNORECASE))
 
         return completed, total
 
     def get_in_progress_task(self) -> str | None:
-        """Retourne l'ID de la tâche en cours (in_progress) s'il y en a une."""
+        """Returns the ID of the in_progress task if there is one."""
         tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return None
 
-        # Cherche une tâche avec statut in_progress
-        # Format: ### Tâche 1.9: [Titre]\n- **Statut**: in_progress
-        pattern = r"#{2,3}\s*Tâche\s*([\d.]+)[^\n]*\n[^#]*\*\*Statut\*\*:\s*in_progress"
+        # Search for task with in_progress status
+        # Format: ### Task 1.9: [Title]\n- **Status**: in_progress
+        pattern = r"#{2,3}\s*Task\s*([\d.]+)[^\n]*\n[^#]*\*\*Status\*\*:\s*in_progress"
         match = re.search(pattern, tasks_content, re.IGNORECASE)
         if match:
             return match.group(1)
         return None
 
     def get_next_pending_task_after(self, task_id: str) -> Optional[str]:
-        """Trouve la prochaine tâche pending après un ID donné.
+        """Finds the next pending task after a given ID.
 
-        Utilisé lors du resume: si task_id est completed, trouve la suivante.
+        Used during resume: if task_id is completed, find the next one.
 
         Args:
-            task_id: ID de la dernière tâche connue (ex: "1.5")
+            task_id: ID of the last known task (e.g., "1.5")
 
         Returns:
-            ID de la prochaine tâche non-complétée, ou None si toutes complétées
+            ID of the next non-completed task, or None if all completed
         """
         tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return None
 
-        # Pattern pour extraire l'ID de tâche et son statut
-        # Format: ### Tâche 1.9: [Titre]\n- **Statut**: pending
-        pattern = r"#{2,3}\s*Tâche\s*([\d.]+)[^\n]*\n[^#]*\*\*Statut\*\*:\s*(\w+)"
+        # Pattern to extract task ID and status
+        # Format: ### Task 1.9: [Title]\n- **Status**: pending
+        pattern = r"#{2,3}\s*Task\s*([\d.]+)[^\n]*\n[^#]*\*\*Status\*\*:\s*(\w+)"
         matches = re.findall(pattern, tasks_content, re.IGNORECASE)
 
         found_target = False
@@ -147,7 +147,7 @@ Vérifie: Avant de commencer, lis `TASKS.md` et confirme que les tâches avant {
         return None
 
     def _detect_generated_files(self) -> list[str]:
-        """Détecte les fichiers générés dans src/ et tests/."""
+        """Detects generated files in src/ and tests/ directories."""
         files = []
 
         src_dir = self.project_path / "src"

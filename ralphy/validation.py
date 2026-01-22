@@ -1,4 +1,4 @@
-"""Système de validation humaine pour Ralphy."""
+"""Human validation system for Ralphy."""
 
 from pathlib import Path
 from typing import Optional
@@ -12,7 +12,7 @@ from ralphy.logger import get_logger
 
 
 class ValidationResult:
-    """Résultat d'une validation humaine."""
+    """Result of a human validation."""
 
     def __init__(self, approved: bool, comment: Optional[str] = None):
         self.approved = approved
@@ -20,7 +20,7 @@ class ValidationResult:
 
 
 class HumanValidator:
-    """Gestionnaire de validation humaine."""
+    """Human validation manager."""
 
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
@@ -32,31 +32,31 @@ class HumanValidator:
         files_generated: list[str],
         summary: Optional[str] = None,
     ) -> ValidationResult:
-        """Demande une validation humaine."""
+        """Requests human validation."""
         self.logger.newline()
-        self.logger.validation("VALIDATION REQUISE")
+        self.logger.validation("VALIDATION REQUIRED")
 
-        # Affiche les fichiers générés
-        self.logger.info("Fichiers générés:")
+        # Display generated files
+        self.logger.info("Generated files:")
         for f in files_generated:
             self.logger.file_generated(f)
 
-        # Affiche le résumé si fourni
+        # Display summary if provided
         if summary:
             self.logger.newline()
-            self.console.print(Panel(summary, title="Résumé", border_style="blue"))
+            self.console.print(Panel(summary, title="Summary", border_style="blue"))
 
         self.logger.newline()
 
-        # Prompt de validation (attente infinie)
-        approved = Confirm.ask("Approuver ?", default=True)
+        # Validation prompt (infinite wait)
+        approved = Confirm.ask("Approve?", default=True)
 
         self.logger.newline()
 
         if approved:
-            self.logger.success("Validation approuvée")
+            self.logger.success("Validation approved")
         else:
-            self.logger.warn("Validation rejetée")
+            self.logger.warn("Validation rejected")
 
         return ValidationResult(approved=approved)
 
@@ -65,25 +65,25 @@ class HumanValidator:
         feature_dir: Path,
         tasks_count: int,
     ) -> ValidationResult:
-        """Demande validation des spécifications.
+        """Requests specification validation.
 
         Args:
             feature_dir: Path to the feature directory containing SPEC.md and TASKS.md
             tasks_count: Number of tasks in TASKS.md
         """
-        files = ["SPEC.md", f"TASKS.md ({tasks_count} tâches)"]
+        files = ["SPEC.md", f"TASKS.md ({tasks_count} tasks)"]
 
-        # Lecture du résumé des specs
+        # Read specification summary
         spec_path = feature_dir / "SPEC.md"
         summary = None
         if spec_path.exists():
             content = spec_path.read_text(encoding="utf-8")
-            # Extrait les premières lignes significatives
+            # Extract first significant lines
             lines = content.split("\n")[:SPEC_PREVIEW_LINES]
             summary = "\n".join(lines)
 
         return self.request_validation(
-            title="Spécifications",
+            title="Specifications",
             files_generated=files,
             summary=summary,
         )
@@ -93,7 +93,7 @@ class HumanValidator:
         feature_dir: Path,
         qa_summary: dict,
     ) -> ValidationResult:
-        """Demande validation du rapport QA.
+        """Requests QA report validation.
 
         Args:
             feature_dir: Path to the feature directory containing QA_REPORT.md

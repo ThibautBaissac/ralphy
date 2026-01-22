@@ -1,1 +1,1 @@
-"""Package contenant les templates de prompts pour les agents."""
+"""Package containing prompt templates for agents."""

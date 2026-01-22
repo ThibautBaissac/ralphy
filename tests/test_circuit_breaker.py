@@ -1,4 +1,4 @@
-"""Tests pour le module circuit_breaker."""
+"""Tests for the circuit_breaker module."""
 
 import threading
 import time
@@ -16,10 +16,10 @@ from ralphy.state import Phase
 
 
 class TestCircuitBreakerConfig:
-    """Tests pour CircuitBreakerConfig."""
+    """Tests for CircuitBreakerConfig."""
 
     def test_default_values(self):
-        """Test des valeurs par défaut."""
+        """Tests default values."""
         config = CircuitBreakerConfig()
         assert config.enabled is True
         assert config.inactivity_timeout == 60
@@ -29,7 +29,7 @@ class TestCircuitBreakerConfig:
         assert config.max_attempts == 3
 
     def test_custom_values(self):
-        """Test avec des valeurs personnalisées."""
+        """Tests with custom values."""
         config = CircuitBreakerConfig(
             enabled=False,
             inactivity_timeout=30,
@@ -47,17 +47,17 @@ class TestCircuitBreakerConfig:
 
 
 class TestCircuitBreakerContext:
-    """Tests pour CircuitBreakerContext."""
+    """Tests for CircuitBreakerContext."""
 
     def test_default_values(self):
-        """Test des valeurs par défaut."""
+        """Tests default values."""
         context = CircuitBreakerContext(phase=Phase.IMPLEMENTATION)
         assert context.phase == Phase.IMPLEMENTATION
         assert context.is_dev_agent is False
         assert context.test_command is None
 
     def test_custom_values(self):
-        """Test avec des valeurs personnalisées."""
+        """Tests with custom values."""
         context = CircuitBreakerContext(
             phase=Phase.QA,
             is_dev_agent=True,
@@ -69,11 +69,11 @@ class TestCircuitBreakerContext:
 
 
 class TestCircuitBreaker:
-    """Tests pour la classe CircuitBreaker."""
+    """Tests for the CircuitBreaker class."""
 
     @pytest.fixture
     def default_config(self):
-        """Configuration par défaut pour les tests."""
+        """Default configuration for tests."""
         return CircuitBreakerConfig(
             enabled=True,
             inactivity_timeout=1,  # 1s pour tests rapides
@@ -85,19 +85,19 @@ class TestCircuitBreaker:
 
     @pytest.fixture
     def default_context(self):
-        """Contexte par défaut pour les tests."""
+        """Default context for tests."""
         return CircuitBreakerContext(phase=Phase.IMPLEMENTATION)
 
     @pytest.fixture
     def circuit_breaker(self, default_config, default_context):
-        """Circuit breaker pour les tests."""
+        """Circuit breaker for tests."""
         return CircuitBreaker(
             config=default_config,
             context=default_context,
         )
 
     def test_initial_state_closed(self, circuit_breaker):
-        """Test que l'état initial est CLOSED."""
+        """Tests that initial state is CLOSED."""
         assert circuit_breaker.state == CircuitBreakerState.CLOSED
         assert circuit_breaker.is_open is False
         assert circuit_breaker.last_trigger is None

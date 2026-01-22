@@ -1,4 +1,4 @@
-"""Tests pour le module progress."""
+"""Tests for the progress module."""
 
 from datetime import datetime
 
@@ -8,10 +8,10 @@ from ralphy.progress import ActivityType, Activity, OutputParser, ProgressDispla
 
 
 class TestActivityType:
-    """Tests pour ActivityType enum."""
+    """Tests for ActivityType enum."""
 
     def test_activity_values(self):
-        """Vérifie les valeurs de l'enum."""
+        """Verifies enum values."""
         assert ActivityType.IDLE.value == "idle"
         assert ActivityType.WRITING_FILE.value == "writing_file"
         assert ActivityType.RUNNING_TEST.value == "running_test"
@@ -20,10 +20,10 @@ class TestActivityType:
 
 
 class TestActivity:
-    """Tests pour Activity dataclass."""
+    """Tests for Activity dataclass."""
 
     def test_activity_creation(self):
-        """Test création d'une activité."""
+        """Tests activity creation."""
         activity = Activity(
             type=ActivityType.WRITING_FILE,
             description="Writing app/models/user.rb",
@@ -34,7 +34,7 @@ class TestActivity:
         assert activity.detail == "app/models/user.rb"
 
     def test_activity_without_detail(self):
-        """Test activité sans détail."""
+        """Tests activity without detail."""
         activity = Activity(
             type=ActivityType.RUNNING_TEST,
             description="Running tests",
@@ -43,10 +43,10 @@ class TestActivity:
 
 
 class TestOutputParser:
-    """Tests pour OutputParser."""
+    """Tests for OutputParser."""
 
     def test_detect_writing_file(self):
-        """Test détection d'écriture de fichier."""
+        """Tests file write detection."""
         parser = OutputParser()
 
         # Pattern Writing
@@ -61,7 +61,7 @@ class TestOutputParser:
         assert activity.type == ActivityType.WRITING_FILE
 
     def test_detect_running_test(self):
-        """Test détection d'exécution de tests."""
+        """Tests test execution detection."""
         parser = OutputParser()
 
         activity = parser.parse("bundle exec rspec spec/models/user_spec.rb")
@@ -77,7 +77,7 @@ class TestOutputParser:
         assert activity.type == ActivityType.RUNNING_TEST
 
     def test_detect_running_command(self):
-        """Test détection d'exécution de commande."""
+        """Tests command execution detection."""
         parser = OutputParser()
 
         activity = parser.parse("Running: bundle install")
@@ -89,10 +89,10 @@ class TestOutputParser:
         assert activity.type == ActivityType.RUNNING_COMMAND
 
     def test_detect_task_complete(self):
-        """Test détection de tâche complétée."""
+        """Test task completion detection."""
         parser = OutputParser()
 
-        activity = parser.parse("**Statut**: completed")
+        activity = parser.parse("**Status**: completed")
         assert activity is not None
         assert activity.type == ActivityType.TASK_COMPLETE
 
@@ -167,12 +167,12 @@ class TestProgressDisplay:
         display.stop()
 
     def test_process_output_increments_tasks_on_completion(self):
-        """Test que les tâches sont incrémentées quand une est complétée."""
+        """Test that tasks are incremented when one completes."""
         display = ProgressDisplay()
         display.start("IMPLEMENTATION", 10)
 
         initial_completed = display._state.tasks_completed
-        display.process_output("**Statut**: completed")
+        display.process_output("**Status**: completed")
         assert display._state.tasks_completed == initial_completed + 1
 
         display.stop()

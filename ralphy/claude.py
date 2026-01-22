@@ -1,4 +1,4 @@
-"""Interface avec Claude Code CLI."""
+"""Interface with Claude Code CLI."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 EXIT_SIGNAL = "EXIT_SIGNAL: true"
 PID_FILE = ".ralphy/claude.pid"
 
-# Intervalle de vérification de l'abort (secondes)
+# Abort check interval (seconds)
 ABORT_CHECK_INTERVAL = 0.1
 
 
@@ -62,7 +62,7 @@ class TokenUsage:
 
 @dataclass
 class ClaudeResponse:
-    """Réponse d'une invocation Claude."""
+    """Response from a Claude invocation."""
 
     output: str
     exit_signal: bool
@@ -209,7 +209,7 @@ class JsonStreamParser:
 
 
 class ClaudeRunner:
-    """Exécuteur de commandes Claude Code CLI."""
+    """Executor for Claude Code CLI commands."""
 
     def __init__(
         self,
@@ -234,12 +234,12 @@ class ClaudeRunner:
         self._json_parser: Optional[JsonStreamParser] = None
 
     def _save_pid(self, pid: int) -> None:
-        """Sauvegarde le PID du process Claude."""
+        """Saves the PID of the Claude process."""
         self._pid_file.parent.mkdir(parents=True, exist_ok=True)
         self._pid_file.write_text(str(pid))
 
     def _clear_pid(self) -> None:
-        """Supprime le fichier PID."""
+        """Removes the PID file."""
         if self._pid_file.exists():
             self._pid_file.unlink()
 
@@ -247,17 +247,17 @@ class ClaudeRunner:
         self,
         output_lines: list[str],
     ) -> None:
-        """Lit la sortie du process avec vérification périodique de l'abort.
+        """Reads process output with periodic abort verification.
 
-        Utilise select() sur Unix pour une lecture non-bloquante avec timeout,
-        permettant une vérification régulière de l'état d'abort.
-        Intègre également le circuit breaker pour détecter les boucles infinies.
+        Uses select() on Unix for non-blocking reading with timeout,
+        enabling regular abort state checking.
+        Also integrates circuit breaker to detect infinite loops.
 
         When JSON streaming is enabled, parses JSON lines to extract text content.
         The extracted text is passed to on_output callback and used for circuit breaker.
         """
-        # Capture une référence locale pour éviter les race conditions
-        # quand le main thread set self._process = None dans le finally
+        # Capture local reference to avoid race conditions
+        # when main thread sets self._process = None in finally
         process = self._process
         if not process or not process.stdout:
             return
@@ -267,15 +267,15 @@ class ClaudeRunner:
 
         while not self._abort_event.is_set():
             try:
-                # Utilise select avec timeout pour vérifier l'abort régulièrement
+                # Use select with timeout to check abort regularly
                 if sys.platform != "win32":
                     readable, _, _ = select.select([stdout_fd], [], [], ABORT_CHECK_INTERVAL)
                     if not readable:
-                        # Timeout select - vérifie si le process est terminé
+                        # Select timeout - check if process terminated
                         if process.poll() is not None:
                             break
 
-                        # Vérifie l'inactivité via le circuit breaker
+                        # Check inactivity via circuit breaker
                         if self.circuit_breaker:
                             trigger = self.circuit_breaker.check_inactivity()
                             if trigger:
@@ -285,15 +285,15 @@ class ClaudeRunner:
                                 break
                         continue
 
-                # Lecture non-bloquante
+                # Non-blocking read
                 chunk = process.stdout.read(1)
                 if not chunk:
-                    # EOF atteint
+                    # EOF reached
                     break
 
                 buffer.write(chunk)
 
-                # Si on a une ligne complète, la traiter
+                # If we have a complete line, process it
                 if chunk == "\n":
                     line_content = buffer.getvalue()
                     # Parse JSON line if parser is available
@@ -320,7 +320,7 @@ class ClaudeRunner:
                         output_lines.append(line_content)
                         if self.on_output:
                             self.on_output(line_content)
-                        # Enregistre la sortie dans le circuit breaker
+                        # Record output in circuit breaker
                         if self.circuit_breaker:
                             trigger = self.circuit_breaker.record_output(line_content)
                             if trigger:
@@ -335,7 +335,7 @@ class ClaudeRunner:
                 # ValueError can occur if the file descriptor is closed
                 break
 
-        # Flush du buffer restant
+        # Flush remaining buffer
         if buffer.tell() > 0 and not self._abort_event.is_set():
             remaining = buffer.getvalue()
             if self._json_parser:
@@ -350,10 +350,10 @@ class ClaudeRunner:
                     self.on_output(remaining)
 
     def _cb_monitor_task_stagnation(self) -> None:
-        """Thread daemon qui vérifie la stagnation des tâches.
+        """Daemon thread that monitors task stagnation.
 
-        Appelle check_task_stagnation() toutes les secondes et
-        déclenche l'abort si le circuit breaker s'ouvre.
+        Calls check_task_stagnation() every second and
+        triggers abort if circuit breaker opens.
         """
         while not self._abort_event.is_set():
             if self.circuit_breaker:
@@ -363,16 +363,16 @@ class ClaudeRunner:
                         self._cb_triggered = True
                     self._abort_event.set()
                     break
-            # Vérifie toutes les secondes
+            # Check every second
             self._abort_event.wait(timeout=1.0)
 
     def run(self, prompt: str) -> ClaudeResponse:
-        """Exécute une commande Claude et retourne la réponse."""
+        """Executes a Claude command and returns the response."""
         logger = get_logger()
         output_lines: list[str] = []
         timed_out = False
 
-        # Reset l'état d'abort et du circuit breaker
+        # Reset abort state and circuit breaker
         self._abort_event.clear()
         with self._cb_lock:
             self._cb_triggered = False
@@ -408,20 +408,20 @@ class ClaudeRunner:
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=self.working_dir,
-                bufsize=0,  # Unbuffered pour réactivité
+                bufsize=0,  # Unbuffered for responsiveness
             )
 
-            # Sauvegarde le PID pour permettre l'abort externe
+            # Save PID for external abort capability
             self._save_pid(self._process.pid)
 
-            # Thread de lecture avec vérification d'abort
+            # Reader thread with abort verification
             reader_thread = threading.Thread(
                 target=self._read_output_with_abort_check,
                 args=(output_lines,),
             )
             reader_thread.start()
 
-            # Thread de monitoring du circuit breaker pour la stagnation
+            # Circuit breaker monitoring thread for stagnation
             cb_monitor_thread = None
             if self.circuit_breaker:
                 cb_monitor_thread = threading.Thread(
@@ -430,7 +430,7 @@ class ClaudeRunner:
                 )
                 cb_monitor_thread.start()
 
-            # Attente avec vérification périodique de l'abort
+            # Wait with periodic abort verification
             elapsed = 0.0
             while elapsed < self.timeout:
                 if self._abort_event.is_set():
@@ -439,23 +439,23 @@ class ClaudeRunner:
                     with self._cb_lock:
                         cb_triggered = self._cb_triggered
                     if cb_triggered:
-                        logger.info("Claude interrompu par circuit breaker")
+                        logger.info("Claude interrupted by circuit breaker")
                     else:
-                        logger.info("Claude interrompu par abort")
+                        logger.info("Claude interrupted by abort")
                     break
 
                 try:
                     self._process.wait(timeout=ABORT_CHECK_INTERVAL)
-                    break  # Process terminé
+                    break  # Process terminated
                 except subprocess.TimeoutExpired:
                     elapsed += ABORT_CHECK_INTERVAL
 
-            # Timeout atteint
+            # Timeout reached
             if elapsed >= self.timeout and self._process.poll() is None:
                 timed_out = True
                 self._process.kill()
                 self._process.wait()  # Reap process to get proper return code
-                logger.error(f"Claude timeout après {self.timeout}s")
+                logger.error(f"Claude timeout after {self.timeout}s")
 
             return_code = self._process.returncode if self._process.returncode is not None else -1
             full_output = "".join(output_lines)
@@ -475,7 +475,7 @@ class ClaudeRunner:
             )
 
         except FileNotFoundError:
-            logger.error("Claude Code CLI non trouvé. Vérifiez l'installation.")
+            logger.error("Claude Code CLI not found. Check installation.")
             return ClaudeResponse(
                 output="",
                 exit_signal=False,
@@ -483,7 +483,7 @@ class ClaudeRunner:
                 timed_out=False,
             )
         except Exception as e:
-            logger.error(f"Erreur Claude: {e}")
+            logger.error(f"Claude error: {e}")
             return ClaudeResponse(
                 output=str(e),
                 exit_signal=False,
@@ -509,19 +509,19 @@ class ClaudeRunner:
             self._process = None
 
     def abort(self) -> None:
-        """Arrête l'exécution en cours (réactif en ~100ms)."""
+        """Stops current execution (responsive in ~100ms)."""
         self._abort_event.set()
         if self._process:
             self._process.kill()
 
 
 def abort_running_claude(project_path: Path) -> bool:
-    """Abort un process Claude en cours depuis le fichier PID.
+    """Aborts a running Claude process from the PID file.
 
-    Vérifie que le processus est bien un processus Claude avant de le tuer
-    pour éviter de tuer un processus non lié si le PID a été recyclé.
+    Verifies that the process is actually a Claude process before killing it
+    to avoid killing an unrelated process if the PID was recycled.
 
-    Returns True si un process a été tué, False sinon.
+    Returns True if a process was killed, False otherwise.
     """
     logger = get_logger()
     pid_file = project_path / PID_FILE
@@ -547,18 +547,18 @@ def abort_running_claude(project_path: Path) -> bool:
             return False
 
         os.kill(pid, signal.SIGTERM)
-        logger.info(f"Process Claude (PID {pid}) interrompu")
+        logger.info(f"Claude process (PID {pid}) interrupted")
         pid_file.unlink()
         return True
     except (ValueError, PermissionError) as e:
-        logger.warn(f"Impossible d'interrompre le process: {e}")
+        logger.warn(f"Failed to interrupt process: {e}")
         if pid_file.exists():
             pid_file.unlink()
         return False
 
 
 def check_claude_installed() -> bool:
-    """Vérifie si Claude Code CLI est installé."""
+    """Checks if Claude Code CLI is installed."""
     try:
         result = subprocess.run(
             ["claude", "--version"],
@@ -572,7 +572,7 @@ def check_claude_installed() -> bool:
 
 
 def check_git_installed() -> bool:
-    """Vérifie si Git est installé et configuré."""
+    """Checks if Git is installed and configured."""
     try:
         result = subprocess.run(
             ["git", "--version"],
@@ -586,7 +586,7 @@ def check_git_installed() -> bool:
 
 
 def check_gh_installed() -> bool:
-    """Vérifie si GitHub CLI (gh) est installé."""
+    """Checks if GitHub CLI (gh) is installed."""
     try:
         result = subprocess.run(
             ["gh", "--version"],

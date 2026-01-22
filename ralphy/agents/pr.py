@@ -1,4 +1,4 @@
-"""Agent PR - Crée la Pull Request sur GitHub."""
+"""PR Agent - Creates Pull Request on GitHub."""
 
 import re
 from pathlib import Path
@@ -10,7 +10,7 @@ from ralphy.config import ProjectConfig
 
 
 class PRAgent(BaseAgent):
-    """Agent qui crée la Pull Request."""
+    """Agent that creates the Pull Request."""
 
     name = "pr-agent"
     prompt_file = "pr_agent.md"
@@ -28,7 +28,7 @@ class PRAgent(BaseAgent):
         self.branch_name = branch_name or self._generate_branch_name()
 
     def _generate_branch_name(self) -> str:
-        """Génère un nom de branche depuis le nom de feature."""
+        """Generates a branch name from the feature name."""
         if self.feature_name:
             # Use feature/<feature-name> format
             name = self.feature_name.lower()
@@ -40,10 +40,10 @@ class PRAgent(BaseAgent):
         return name.strip("-")
 
     def build_prompt(self) -> str:
-        """Construit le prompt pour la création de PR."""
+        """Builds the prompt for PR creation."""
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template pr_agent.md non trouvé")
+            self.logger.error("Template pr_agent.md not found")
             return ""
 
         qa_report = self.read_feature_file("QA_REPORT.md") or "Rapport QA non disponible"
@@ -55,7 +55,7 @@ class PRAgent(BaseAgent):
         )
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
-        """Vérifie que la PR a été créée."""
+        """Verifies that the PR has been created."""
         pr_url = self._extract_pr_url(response.output)
 
         if not pr_url:
@@ -63,19 +63,19 @@ class PRAgent(BaseAgent):
                 success=False,
                 output=response.output,
                 files_generated=[],
-                error_message="URL de PR non trouvée dans la sortie",
+                error_message="PR URL not found in output",
             )
 
         return AgentResult(
             success=response.exit_signal,
             output=response.output,
             files_generated=[f"PR: {pr_url}"],
-            error_message=None if response.exit_signal else "EXIT_SIGNAL non reçu",
+            error_message=None if response.exit_signal else "EXIT_SIGNAL not received",
         )
 
     def _extract_pr_url(self, output: str) -> Optional[str]:
-        """Extrait l'URL de la PR depuis la sortie."""
-        # Pattern pour les URLs GitHub PR
+        """Extracts the PR URL from the output."""
+        # Pattern for GitHub PR URLs
         patterns = [
             r"https://github\.com/[^\s]+/pull/\d+",
             r"https://github\.com/[^\s]+/compare/[^\s]+",

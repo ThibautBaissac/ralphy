@@ -1,4 +1,4 @@
-"""Tests pour le module journal."""
+"""Tests for the journal module."""
 
 import json
 import threading

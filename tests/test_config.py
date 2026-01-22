@@ -1,4 +1,4 @@
-"""Tests pour le module config."""
+"""Tests for the config module."""
 
 import tempfile
 from pathlib import Path
@@ -21,10 +21,10 @@ from ralphy.config import (
 
 
 class TestModelConfig:
-    """Tests pour ModelConfig."""
+    """Tests for ModelConfig."""
 
     def test_default_values(self):
-        """Test des valeurs par défaut."""
+        """Tests default values."""
         config = ModelConfig()
         assert config.specification == "sonnet"
         assert config.implementation == "sonnet"
@@ -33,41 +33,41 @@ class TestModelConfig:
 
 
 class TestValidateModel:
-    """Tests pour validate_model()."""
+    """Tests for validate_model()."""
 
     def test_valid_alias_models(self):
-        """Test que les alias valides sont acceptés."""
+        """Tests that valid aliases are accepted."""
         assert validate_model("sonnet") == "sonnet"
         assert validate_model("opus") == "opus"
         assert validate_model("haiku") == "haiku"
 
     def test_valid_full_model_names(self):
-        """Test que les noms complets valides sont acceptés."""
+        """Tests that valid full model names are accepted."""
         assert validate_model("claude-sonnet-4-5-20250929") == "claude-sonnet-4-5-20250929"
         assert validate_model("claude-opus-4-5-20251101") == "claude-opus-4-5-20251101"
         assert validate_model("claude-haiku-4-5-20251001") == "claude-haiku-4-5-20251001"
 
     def test_invalid_model_falls_back_to_sonnet(self):
-        """Test qu'un modèle invalide retourne sonnet avec warning."""
+        """Tests that invalid model returns sonnet with warning."""
         assert validate_model("invalid-model") == "sonnet"
         assert validate_model("gpt-4") == "sonnet"
         assert validate_model("claude-unknown-version") == "sonnet"
 
     def test_empty_string_falls_back_to_sonnet(self):
-        """Test qu'une chaîne vide retourne sonnet."""
+        """Tests that empty string returns sonnet."""
         assert validate_model("") == "sonnet"
 
     def test_all_allowed_models_are_valid(self):
-        """Test que tous les modèles de la whitelist sont valides."""
+        """Tests that all whitelisted models are valid."""
         for model in ALLOWED_MODELS:
             assert validate_model(model) == model
 
 
 class TestTimeoutConfig:
-    """Tests pour TimeoutConfig."""
+    """Tests for TimeoutConfig."""
 
     def test_default_values(self):
-        """Test des valeurs par défaut."""
+        """Tests default values."""
         config = TimeoutConfig()
         assert config.specification == 1800
         assert config.implementation == 14400
@@ -77,7 +77,7 @@ class TestTimeoutConfig:
 
 
 class TestProjectConfig:
-    """Tests pour ProjectConfig."""
+    """Tests for ProjectConfig."""
 
     def test_default_values(self):
         """Test des valeurs par défaut."""

@@ -1,4 +1,4 @@
-"""Tests pour le module claude."""
+"""Tests for claude module."""
 
 import tempfile
 import time

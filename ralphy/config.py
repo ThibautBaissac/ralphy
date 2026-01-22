@@ -1,4 +1,4 @@
-"""Gestion de la configuration projet Ralphy."""
+"""Ralphy project configuration management."""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -52,11 +52,11 @@ def validate_model(model: str) -> str:
 
 @dataclass
 class TimeoutConfig:
-    """Configuration des timeouts en secondes.
+    """Timeout configuration in seconds.
 
-    Chaque phase a son propre timeout spécifique.
-    Le timeout `agent` sert de valeur par défaut si aucun timeout
-    n'est spécifié lors de l'appel à agent.run().
+    Each phase has its own specific timeout.
+    The `agent` timeout serves as a default value if no timeout
+    is specified when calling agent.run().
     """
 
     specification: int = SPEC_TIMEOUT_SECONDS  # 30 min - Phase 1
@@ -68,10 +68,10 @@ class TimeoutConfig:
 
 @dataclass
 class RetryConfig:
-    """Configuration des retries pour les agents.
+    """Agent retry configuration.
 
-    Les retries sont déclenchés sur timeout ou erreur (return code != 0).
-    Les échecs d'EXIT_SIGNAL ne déclenchent pas de retry.
+    Retries are triggered on timeout or error (return code != 0).
+    EXIT_SIGNAL failures do not trigger retry.
     """
 
     max_attempts: int = DEFAULT_RETRY_ATTEMPTS  # Total attempts (1 = no retry)
@@ -80,14 +80,14 @@ class RetryConfig:
 
 @dataclass
 class CircuitBreakerConfig:
-    """Configuration du circuit breaker.
+    """Circuit breaker configuration.
 
-    Le circuit breaker protège contre les boucles infinies et agents bloqués.
-    Il surveille 4 triggers:
-    - inactivity: Aucune sortie pendant X secondes
-    - repeated_error: Même erreur répétée X fois
-    - task_stagnation: Pas de tâche complétée pendant X secondes
-    - output_size: Sortie dépassant X bytes
+    The circuit breaker protects against infinite loops and blocked agents.
+    It monitors 4 triggers:
+    - inactivity: No output for X seconds
+    - repeated_error: Same error repeated X times
+    - task_stagnation: No task completion for X seconds
+    - output_size: Output exceeding X bytes
     """
 
     enabled: bool = True

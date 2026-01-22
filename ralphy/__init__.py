@@ -1,3 +1,3 @@
-"""Ralphy - Outil d'aide au développement de code par IA."""
+"""Ralphy - AI-powered code development automation tool."""
 
 __version__ = "0.1.0"

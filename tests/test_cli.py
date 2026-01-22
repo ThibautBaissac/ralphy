@@ -1,4 +1,4 @@
-"""Tests pour les commandes CLI."""
+"""Tests for CLI commands."""
 
 import tempfile
 from pathlib import Path

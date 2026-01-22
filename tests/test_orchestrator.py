@@ -1,4 +1,4 @@
-"""Tests pour l'orchestrateur."""
+"""Tests for the orchestrator."""
 
 import tempfile
 from pathlib import Path
@@ -13,11 +13,11 @@ FEATURE_NAME = "test-feature"
 
 
 class TestOrchestrator:
-    """Tests pour Orchestrator."""
+    """Tests for Orchestrator."""
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire avec structure de feature."""
+        """Creates a temporary project with feature structure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             # Create feature directory structure
@@ -26,7 +26,7 @@ class TestOrchestrator:
             yield project_path
 
     def test_missing_prd_raises_error(self, temp_project):
-        """Test que l'absence de PRD.md lève une erreur."""
+        """Test that missing PRD.md raises an error."""
         orchestrator = Orchestrator(temp_project, feature_name=FEATURE_NAME)
         with pytest.raises(WorkflowError, match="PRD.md non trouvé"):
             orchestrator._validate_prerequisites()
@@ -220,19 +220,19 @@ class TestTaskLevelResume:
             (feature_dir / "PRD.md").write_text("# Test PRD\n" + "x" * 500)
             (feature_dir / ".ralphy").mkdir()
             (feature_dir / "SPEC.md").write_text("# Spec\n" + "x" * 1500)
-            (feature_dir / "TASKS.md").write_text("""# Tâches
+            (feature_dir / "TASKS.md").write_text("""# Tasks
 
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: completed
+### Task 1.2: [Model - User]
+- **Status**: completed
 
-### Tâche 1.3: [Controller - Users]
-- **Statut**: pending
+### Task 1.3: [Controller - Users]
+- **Status**: pending
 
-### Tâche 1.4: [View - Users]
-- **Statut**: pending
+### Task 1.4: [View - Users]
+- **Status**: pending
 """)
             yield project_path
 
@@ -255,19 +255,19 @@ class TestTaskLevelResume:
         """Test de reprise depuis un checkpoint de tâche in_progress."""
         # Update TASKS.md to have 1.3 as in_progress
         feature_dir = temp_project_with_tasks / "docs" / "features" / FEATURE_NAME
-        (feature_dir / "TASKS.md").write_text("""# Tâches
+        (feature_dir / "TASKS.md").write_text("""# Tasks
 
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: completed
+### Task 1.2: [Model - User]
+- **Status**: completed
 
-### Tâche 1.3: [Controller - Users]
-- **Statut**: in_progress
+### Task 1.3: [Controller - Users]
+- **Status**: in_progress
 
-### Tâche 1.4: [View - Users]
-- **Statut**: pending
+### Task 1.4: [View - Users]
+- **Status**: pending
 """)
         state_manager = StateManager(temp_project_with_tasks, FEATURE_NAME)
         state_manager.checkpoint_task("1.2", "completed")
@@ -294,13 +294,13 @@ class TestTaskLevelResume:
         """Test que _get_implementation_resume_task retourne None si toutes complétées."""
         # Update TASKS.md to have all completed
         feature_dir = temp_project_with_tasks / "docs" / "features" / FEATURE_NAME
-        (feature_dir / "TASKS.md").write_text("""# Tâches
+        (feature_dir / "TASKS.md").write_text("""# Tasks
 
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: completed
+### Task 1.2: [Model - User]
+- **Status**: completed
 """)
         state_manager = StateManager(temp_project_with_tasks, FEATURE_NAME)
         state_manager.checkpoint_task("1.2", "completed")

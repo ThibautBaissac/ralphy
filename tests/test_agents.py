@@ -1,4 +1,4 @@
-"""Tests pour les agents."""
+"""Tests for agents."""
 
 import tempfile
 from pathlib import Path
@@ -13,7 +13,7 @@ from ralphy.config import ProjectConfig, StackConfig
 
 
 class ConcreteAgent(BaseAgent):
-    """Agent concret pour les tests."""
+    """Concrete agent for testing."""
 
     name = "test-agent"
     prompt_file = "spec_agent.md"  # Use real prompt file for fallback tests
@@ -30,49 +30,49 @@ class ConcreteAgent(BaseAgent):
 
 
 class TestBaseAgent:
-    """Tests pour BaseAgent."""
+    """Tests for BaseAgent."""
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire."""
+        """Creates a temporary project."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             (project_path / "PRD.md").write_text("# Test PRD")
             yield project_path
 
     def test_read_file(self, temp_project):
-        """Test de lecture de fichier."""
+        """Tests file reading."""
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
         content = agent.read_file("PRD.md")
         assert content == "# Test PRD"
 
     def test_read_missing_file(self, temp_project):
-        """Test de lecture de fichier manquant."""
+        """Tests reading a missing file."""
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
         content = agent.read_file("MISSING.md")
         assert content is None
 
     def test_agent_stores_model_parameter(self, temp_project):
-        """Test que l'agent stocke le paramètre model."""
+        """Tests that agent stores the model parameter."""
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config, model="opus")
         assert agent.model == "opus"
 
     def test_agent_model_defaults_to_none(self, temp_project):
-        """Test que l'agent a model=None par défaut."""
+        """Tests that agent defaults to model=None."""
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
         assert agent.model is None
 
 
 class TestSpecAgent:
-    """Tests pour SpecAgent."""
+    """Tests for SpecAgent."""
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire avec PRD dans feature directory."""
+        """Creates a temporary project with PRD in feature directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             feature_dir = project_path / "docs" / "features" / "test-feature"
@@ -81,21 +81,21 @@ class TestSpecAgent:
             yield project_path, feature_dir
 
     def test_count_tasks(self, temp_project):
-        """Test du comptage de tâches."""
+        """Tests task counting."""
         project_path, feature_dir = temp_project
         config = ProjectConfig()
         agent = SpecAgent(project_path, config, feature_dir=feature_dir)
 
-        # Crée un fichier TASKS.md
-        tasks_content = """# Tâches
-## Tâche 1: Setup
-- **Statut**: pending
+        # Creates a TASKS.md file
+        tasks_content = """# Tasks
+## Task 1: Setup
+- **Status**: pending
 
-## Tâche 2: Implementation
-- **Statut**: pending
+## Task 2: Implementation
+- **Status**: pending
 
-## Tâche 3: Tests
-- **Statut**: pending
+## Task 3: Tests
+- **Status**: pending
 """
         (feature_dir / "TASKS.md").write_text(tasks_content)
 
@@ -114,12 +114,12 @@ class TestDevAgent:
             feature_dir = project_path / "docs" / "features" / "test-feature"
             feature_dir.mkdir(parents=True)
             (feature_dir / "SPEC.md").write_text("# Specs")
-            (feature_dir / "TASKS.md").write_text("""# Tâches
-## Tâche 1: Test
-- **Statut**: completed
+            (feature_dir / "TASKS.md").write_text("""# Tasks
+## Task 1: Test
+- **Status**: completed
 
-## Tâche 2: Test2
-- **Statut**: pending
+## Task 2: Test2
+- **Status**: pending
 """)
             yield project_path, feature_dir
 
@@ -136,15 +136,15 @@ class TestDevAgent:
     def test_count_task_status_with_triple_hash(self, temp_project):
         """Test du comptage avec format ### Tâche (généré par spec-agent)."""
         project_path, feature_dir = temp_project
-        (feature_dir / "TASKS.md").write_text("""# Tâches
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+        (feature_dir / "TASKS.md").write_text("""# Tasks
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: in_progress
+### Task 1.2: [Model - User]
+- **Status**: in_progress
 
-### Tâche 1.3: [Controller - Users]
-- **Statut**: pending
+### Task 1.3: [Controller - Users]
+- **Status**: pending
 """)
         config = ProjectConfig()
         agent = DevAgent(project_path, config, feature_dir=feature_dir)
@@ -156,15 +156,15 @@ class TestDevAgent:
     def test_get_in_progress_task(self, temp_project):
         """Test de la détection d'une tâche in_progress."""
         project_path, feature_dir = temp_project
-        (feature_dir / "TASKS.md").write_text("""# Tâches
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+        (feature_dir / "TASKS.md").write_text("""# Tasks
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: in_progress
+### Task 1.2: [Model - User]
+- **Status**: in_progress
 
-### Tâche 1.3: [Controller - Users]
-- **Statut**: pending
+### Task 1.3: [Controller - Users]
+- **Status**: pending
 """)
         config = ProjectConfig()
         agent = DevAgent(project_path, config, feature_dir=feature_dir)
@@ -193,19 +193,19 @@ class TestDevAgentResume:
             feature_dir = project_path / "docs" / "features" / "test-feature"
             feature_dir.mkdir(parents=True)
             (feature_dir / "SPEC.md").write_text("# Specs\nTest spec content")
-            (feature_dir / "TASKS.md").write_text("""# Tâches
+            (feature_dir / "TASKS.md").write_text("""# Tasks
 
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: completed
+### Task 1.2: [Model - User]
+- **Status**: completed
 
-### Tâche 1.3: [Controller - Users]
-- **Statut**: pending
+### Task 1.3: [Controller - Users]
+- **Status**: pending
 
-### Tâche 1.4: [View - Users]
-- **Statut**: pending
+### Task 1.4: [View - Users]
+- **Status**: pending
 """)
             yield project_path, feature_dir
 
@@ -223,9 +223,9 @@ class TestDevAgentResume:
         config = ProjectConfig()
         agent = DevAgent(project_path, config, feature_dir=feature_dir)
         prompt = agent.build_prompt(start_from_task="1.3")
-        assert "MODE REPRISE ACTIF" in prompt
-        assert "tâche 1.3" in prompt
-        assert "Saute toutes les tâches AVANT la tâche 1.3" in prompt
+        assert "RESUME MODE ACTIVE" in prompt
+        assert "task 1.3" in prompt
+        assert "Skip all tasks BEFORE task 1.3" in prompt
 
     def test_get_next_pending_task_after_completed(self, temp_project_with_specs):
         """Test de la recherche de la prochaine tâche après une completed."""
@@ -267,13 +267,13 @@ class TestDevAgentResume:
         """Test que get_next_pending_task_after retourne None si toutes complétées."""
         project_path, feature_dir = temp_project_with_specs
         # Update TASKS.md to have all completed
-        (feature_dir / "TASKS.md").write_text("""# Tâches
+        (feature_dir / "TASKS.md").write_text("""# Tasks
 
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: completed
+### Task 1.2: [Model - User]
+- **Status**: completed
 """)
         config = ProjectConfig()
         agent = DevAgent(project_path, config, feature_dir=feature_dir)
@@ -284,16 +284,16 @@ class TestDevAgentResume:
     def test_get_next_pending_task_after_with_in_progress(self, temp_project_with_specs):
         """Test avec une tâche in_progress."""
         project_path, feature_dir = temp_project_with_specs
-        (feature_dir / "TASKS.md").write_text("""# Tâches
+        (feature_dir / "TASKS.md").write_text("""# Tasks
 
-### Tâche 1.1: [Migration - Setup]
-- **Statut**: completed
+### Task 1.1: [Migration - Setup]
+- **Status**: completed
 
-### Tâche 1.2: [Model - User]
-- **Statut**: in_progress
+### Task 1.2: [Model - User]
+- **Status**: in_progress
 
-### Tâche 1.3: [Controller - Users]
-- **Statut**: pending
+### Task 1.3: [Controller - Users]
+- **Status**: pending
 """)
         config = ProjectConfig()
         agent = DevAgent(project_path, config, feature_dir=feature_dir)

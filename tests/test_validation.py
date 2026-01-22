@@ -1,4 +1,4 @@
-"""Tests pour le module validation."""
+"""Tests for the validation module."""
 
 import tempfile
 from pathlib import Path
@@ -10,45 +10,45 @@ from ralphy.validation import HumanValidator, ValidationResult
 
 
 class TestValidationResult:
-    """Tests pour ValidationResult."""
+    """Tests for ValidationResult."""
 
     def test_approved_result(self):
-        """Test d'un résultat approuvé."""
+        """Tests an approved result."""
         result = ValidationResult(approved=True)
         assert result.approved is True
         assert result.comment is None
 
     def test_rejected_result(self):
-        """Test d'un résultat rejeté."""
+        """Tests a rejected result."""
         result = ValidationResult(approved=False)
         assert result.approved is False
         assert result.comment is None
 
     def test_result_with_comment(self):
-        """Test d'un résultat avec commentaire."""
+        """Tests a result with comment."""
         result = ValidationResult(approved=False, comment="Need more tests")
         assert result.approved is False
         assert result.comment == "Need more tests"
 
 
 class TestHumanValidator:
-    """Tests pour HumanValidator."""
+    """Tests for HumanValidator."""
 
     @pytest.fixture
     def validator(self):
-        """Crée un validateur avec console mockée."""
+        """Creates a validator with mocked console."""
         console = MagicMock()
         return HumanValidator(console=console)
 
     @pytest.fixture
     def temp_feature_dir(self):
-        """Crée un répertoire feature temporaire."""
+        """Creates a temporary feature directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             feature_dir = Path(tmpdir)
             yield feature_dir
 
     def test_request_validation_approved(self, validator):
-        """Test de validation approuvée."""
+        """Tests approved validation."""
         with patch("ralphy.validation.Confirm.ask", return_value=True):
             result = validator.request_validation(
                 title="Test",
@@ -57,7 +57,7 @@ class TestHumanValidator:
             assert result.approved is True
 
     def test_request_validation_rejected(self, validator):
-        """Test de validation rejetée."""
+        """Tests rejected validation."""
         with patch("ralphy.validation.Confirm.ask", return_value=False):
             result = validator.request_validation(
                 title="Test",
@@ -66,7 +66,7 @@ class TestHumanValidator:
             assert result.approved is False
 
     def test_request_validation_with_summary(self, validator):
-        """Test de validation avec résumé."""
+        """Tests validation with summary."""
         with patch("ralphy.validation.Confirm.ask", return_value=True):
             result = validator.request_validation(
                 title="Test",
@@ -132,7 +132,7 @@ class TestHumanValidator:
                     "files_generated"
                 ) or call_args.args[1]
                 assert "SPEC.md" in files_generated
-                assert any("7 tâches" in f for f in files_generated)
+                assert any("7 tasks" in f for f in files_generated)
 
     def test_request_qa_validation_approved(self, validator, temp_feature_dir):
         """Test de validation QA approuvée."""
@@ -192,7 +192,7 @@ class TestHumanValidatorEdgeCases:
 
     @pytest.fixture
     def temp_feature_dir(self):
-        """Crée un répertoire feature temporaire."""
+        """Creates a temporary feature directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             feature_dir = Path(tmpdir)
             yield feature_dir

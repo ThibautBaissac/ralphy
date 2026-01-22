@@ -1,4 +1,4 @@
-"""Tests pour le module state."""
+"""Tests for the state module."""
 
 import json
 import tempfile
@@ -11,10 +11,10 @@ from ralphy.state import Phase, StateManager, Status, WorkflowState
 
 
 class TestWorkflowState:
-    """Tests pour WorkflowState."""
+    """Tests for WorkflowState."""
 
     def test_default_state(self):
-        """Test de l'état par défaut."""
+        """Tests default state."""
         state = WorkflowState()
         assert state.phase == Phase.IDLE
         assert state.status == Status.PENDING
@@ -22,7 +22,7 @@ class TestWorkflowState:
         assert state.tasks_total == 0
 
     def test_from_dict(self):
-        """Test de création depuis un dictionnaire."""
+        """Tests creation from a dictionary."""
         data = {
             "phase": "implementation",
             "status": "running",
@@ -36,7 +36,7 @@ class TestWorkflowState:
         assert state.tasks_total == 8
 
     def test_to_dict(self):
-        """Test de conversion en dictionnaire."""
+        """Tests conversion to dictionary."""
         state = WorkflowState(
             phase=Phase.QA,
             status=Status.COMPLETED,
@@ -50,11 +50,11 @@ class TestWorkflowState:
 
 
 class TestStateManager:
-    """Tests pour StateManager."""
+    """Tests for StateManager."""
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire avec structure de feature."""
+        """Creates a temporary project with feature structure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             (project_path / ".ralphy").mkdir()
@@ -62,7 +62,7 @@ class TestStateManager:
 
     @pytest.fixture
     def temp_project_with_feature(self):
-        """Crée un projet temporaire avec structure de feature."""
+        """Creates a temporary project with feature structure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             feature_dir = project_path / "docs" / "features" / "test-feature"
@@ -71,29 +71,29 @@ class TestStateManager:
             yield project_path
 
     def test_load_default_state(self, temp_project):
-        """Test du chargement d'un état par défaut (legacy mode)."""
+        """Tests loading default state (legacy mode)."""
         manager = StateManager(temp_project)
         assert manager.state.phase == Phase.IDLE
 
     def test_load_default_state_feature(self, temp_project_with_feature):
-        """Test du chargement d'un état par défaut (feature mode)."""
+        """Tests loading default state (feature mode)."""
         manager = StateManager(temp_project_with_feature, "test-feature")
         assert manager.state.phase == Phase.IDLE
 
     def test_save_and_load(self, temp_project):
-        """Test de sauvegarde et chargement."""
+        """Tests save and load."""
         manager = StateManager(temp_project)
         manager.transition(Phase.SPECIFICATION)
         manager.update_tasks(0, 5)
         manager.save()
 
-        # Nouveau manager charge l'état
+        # New manager loads the state
         manager2 = StateManager(temp_project)
         assert manager2.state.phase == Phase.SPECIFICATION
         assert manager2.state.tasks_total == 5
 
     def test_save_and_load_feature(self, temp_project_with_feature):
-        """Test de sauvegarde et chargement (feature mode)."""
+        """Tests save and load (feature mode)."""
         manager = StateManager(temp_project_with_feature, "test-feature")
         manager.transition(Phase.SPECIFICATION)
         manager.update_tasks(0, 5)

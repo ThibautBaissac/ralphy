@@ -1,4 +1,4 @@
-"""Logging formaté pour Ralphy avec timestamps et couleurs."""
+"""Formatted logging for Ralphy with timestamps and colors."""
 
 from datetime import datetime
 from typing import Optional
@@ -8,22 +8,22 @@ from rich.text import Text
 
 
 class Logger:
-    """Logger formaté avec timestamps pour le terminal."""
+    """Formatted logger with timestamps for the terminal."""
 
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
         self._live_mode = False
 
     def set_live_mode(self, active: bool) -> None:
-        """Active/désactive le mode live (skip output pour Rich Live)."""
+        """Enable/disable live mode (skip output for Rich Live)."""
         self._live_mode = active
 
     def _timestamp(self) -> str:
-        """Retourne le timestamp formaté [HH:MM:SS]."""
+        """Returns the formatted timestamp [HH:MM:SS]."""
         return datetime.now().strftime("[%H:%M:%S]")
 
     def _log(self, message: str, style: str = "") -> None:
-        """Log un message avec timestamp."""
+        """Logs a message with timestamp."""
         if self._live_mode:
             return
         text = Text()
@@ -33,31 +33,31 @@ class Logger:
         self.console.print(text)
 
     def info(self, message: str) -> None:
-        """Log un message info."""
+        """Logs an info message."""
         self._log(message)
 
     def success(self, message: str) -> None:
-        """Log un message de succès."""
+        """Logs a success message."""
         self._log(message, style="green")
 
     def warn(self, message: str) -> None:
-        """Log un message warning."""
+        """Logs a warning message."""
         self._log(message, style="yellow")
 
     def error(self, message: str) -> None:
-        """Log un message erreur."""
+        """Logs an error message."""
         self._log(message, style="red bold")
 
     def phase(self, phase_name: str) -> None:
-        """Log le début d'une phase."""
+        """Logs the start of a phase."""
         self._log(f"Phase: {phase_name}", style="cyan bold")
 
     def agent(self, agent_name: str, action: str) -> None:
-        """Log une action d'agent."""
+        """Logs an agent action."""
         self._log(f"Agent: {agent_name} {action}", style="blue")
 
     def validation(self, message: str) -> None:
-        """Log un message de validation."""
+        """Logs a validation message."""
         text = Text()
         text.append(self._timestamp(), style="dim")
         text.append(" ")
@@ -67,11 +67,11 @@ class Logger:
         self.console.print(text)
 
     def file_generated(self, filepath: str) -> None:
-        """Log un fichier généré."""
+        """Logs a generated file."""
         self._log(f"  - {filepath}", style="green")
 
     def task_start(self, task_description: str) -> None:
-        """Log le début d'une tâche (affiché même en mode live)."""
+        """Logs the start of a task (displayed even in live mode)."""
         text = Text()
         text.append(self._timestamp(), style="dim")
         text.append(" ")
@@ -80,7 +80,7 @@ class Logger:
         self.console.print(text)
 
     def task_complete(self, task_description: str) -> None:
-        """Log la fin d'une tâche (affiché même en mode live)."""
+        """Logs the end of a task (displayed even in live mode)."""
         text = Text()
         text.append(self._timestamp(), style="dim")
         text.append(" ")
@@ -89,22 +89,22 @@ class Logger:
         self.console.print(text)
 
     def stream(self, text: str) -> None:
-        """Stream du texte sans newline (pour output agent)."""
+        """Streams text without newline (for agent output)."""
         if self._live_mode:
             return
         self.console.print(text, end="")
 
     def newline(self) -> None:
-        """Affiche une ligne vide."""
+        """Displays an empty line."""
         self.console.print()
 
 
-# Instance globale
+# Global instance
 _logger: Optional[Logger] = None
 
 
 def get_logger() -> Logger:
-    """Retourne l'instance globale du logger."""
+    """Returns the global logger instance."""
     global _logger
     if _logger is None:
         _logger = Logger()
@@ -112,6 +112,6 @@ def get_logger() -> Logger:
 
 
 def set_logger(logger: Logger) -> None:
-    """Définit l'instance globale du logger."""
+    """Sets the global logger instance."""
     global _logger
     _logger = logger

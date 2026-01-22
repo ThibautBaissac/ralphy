@@ -1,4 +1,4 @@
-"""Agent de spécification - Génère SPEC.md et TASKS.md depuis PRD.md."""
+"""Specification Agent - Generates SPEC.md and TASKS.md from PRD.md."""
 
 from pathlib import Path
 from typing import Optional
@@ -8,27 +8,27 @@ from ralphy.claude import ClaudeResponse
 
 
 class SpecAgent(BaseAgent):
-    """Agent qui génère les spécifications depuis un PRD."""
+    """Agent that generates specifications from a PRD."""
 
     name = "spec-agent"
     prompt_file = "spec_agent.md"
 
     def build_prompt(self) -> str:
-        """Construit le prompt avec le contenu du PRD."""
+        """Builds the prompt with PRD content."""
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template spec_agent.md non trouvé")
+            self.logger.error("Template spec_agent.md not found")
             return ""
 
         prd_content = self.read_feature_file("PRD.md")
         if not prd_content:
-            self.logger.error("PRD.md non trouvé dans le dossier feature")
+            self.logger.error("PRD.md not found in feature directory")
             return ""
 
         return self._apply_placeholders(template, prd_content=prd_content)
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
-        """Vérifie que SPEC.md et TASKS.md ont été générés."""
+        """Verifies that SPEC.md and TASKS.md have been generated."""
         files_generated = []
 
         spec_path = self.feature_dir / "SPEC.md"
@@ -49,7 +49,7 @@ class SpecAgent(BaseAgent):
                 success=False,
                 output=response.output,
                 files_generated=files_generated,
-                error_message=f"Fichiers manquants: {', '.join(missing)}",
+                error_message=f"Missing files: {', '.join(missing)}",
             )
 
         # Success requires both EXIT_SIGNAL and valid files
@@ -62,12 +62,12 @@ class SpecAgent(BaseAgent):
             success=response.exit_signal and files_valid,
             output=response.output,
             files_generated=files_generated,
-            error_message=None if response.exit_signal else "EXIT_SIGNAL non reçu",
+            error_message=None if response.exit_signal else "EXIT_SIGNAL not received",
         )
 
     def count_tasks(self) -> int:
-        """Compte le nombre de tâches dans TASKS.md."""
+        """Counts the number of tasks in TASKS.md."""
         tasks_content = self.read_feature_file("TASKS.md")
         if not tasks_content:
             return 0
-        return tasks_content.count("## Tâche")
+        return tasks_content.count("## Task")

@@ -1,4 +1,4 @@
-"""Orchestrateur principal du workflow Ralphy."""
+"""Main orchestrator for the Ralphy workflow."""
 
 from __future__ import annotations
 
@@ -25,19 +25,19 @@ if TYPE_CHECKING:
 
 
 class WorkflowError(Exception):
-    """Erreur dans le workflow."""
+    """Error in the workflow."""
 
     pass
 
 
 class TransitionError(WorkflowError):
-    """Erreur de transition de phase invalide."""
+    """Error for invalid phase transition."""
 
     pass
 
 
 class Orchestrator:
-    """Orchestrateur du workflow Ralphy."""
+    """Orchestrator for the Ralphy workflow."""
 
     def __init__(
         self,
@@ -82,7 +82,7 @@ class Orchestrator:
             self.on_output = on_output or self._default_output
 
     def _default_output(self, text: str) -> None:
-        """Handler de sortie par défaut."""
+        """Default output handler."""
         self.logger.stream(text)
 
     @property

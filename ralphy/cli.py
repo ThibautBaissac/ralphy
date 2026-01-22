@@ -1,4 +1,4 @@
-"""Interface CLI pour Ralphy."""
+"""CLI interface for Ralphy."""
 
 import re
 import sys
@@ -81,7 +81,7 @@ Implement the feature as described above.
 """
 
 
-# Liste des fichiers de prompts à copier
+# List of prompt files to copy
 PROMPT_FILES = [
     "spec_agent.md",
     "dev_agent.md",
@@ -91,36 +91,36 @@ PROMPT_FILES = [
 
 
 def _generate_prompt_header(prompt_file: str) -> str:
-    """Génère un header documentant les placeholders disponibles pour un prompt.
+    """Generates a header documenting available placeholders for a prompt.
 
     Args:
-        prompt_file: Nom du fichier de prompt (ex: spec_agent.md)
+        prompt_file: Prompt file name (e.g., spec_agent.md)
 
     Returns:
-        Header markdown avec documentation des placeholders.
+        Markdown header with placeholder documentation.
     """
-    # Placeholders communs à tous les prompts
+    # Placeholders common to all prompts
     common_placeholders = """
 | Placeholder | Description |
 |-------------|-------------|
-| `{{project_name}}` | Nom du projet |
-| `{{language}}` | Stack technique (depuis config.yaml) |
-| `{{test_command}}` | Commande de test (depuis config.yaml) |
+| `{{project_name}}` | Project name |
+| `{{language}}` | Tech stack (from config.yaml) |
+| `{{test_command}}` | Test command (from config.yaml) |
 """
 
-    # Placeholders spécifiques par agent
+    # Agent-specific placeholders
     specific_placeholders = {
-        "spec_agent.md": """| `{{prd_content}}` | Contenu de PRD.md |
+        "spec_agent.md": """| `{{prd_content}}` | Content of PRD.md |
 """,
-        "dev_agent.md": """| `{{spec_content}}` | Contenu de SPEC.md |
-| `{{tasks_content}}` | Contenu de TASKS.md |
-| `{{resume_instruction}}` | Instructions de reprise (vide si nouvelle session) |
+        "dev_agent.md": """| `{{spec_content}}` | Content of SPEC.md |
+| `{{tasks_content}}` | Content of TASKS.md |
+| `{{resume_instruction}}` | Resume instructions (empty if new session) |
 """,
-        "qa_agent.md": """| `{{spec_content}}` | Contenu de SPEC.md |
+        "qa_agent.md": """| `{{spec_content}}` | Content of SPEC.md |
 """,
-        "pr_agent.md": """| `{{branch_name}}` | Nom de la branche à créer |
-| `{{qa_report}}` | Contenu du rapport QA |
-| `{{spec_content}}` | Contenu de SPEC.md |
+        "pr_agent.md": """| `{{branch_name}}` | Branch name to create |
+| `{{qa_report}}` | QA report content |
+| `{{spec_content}}` | Content of SPEC.md |
 """,
     }
 
@@ -132,13 +132,13 @@ def _generate_prompt_header(prompt_file: str) -> str:
 CUSTOM PROMPT TEMPLATE - {agent_name} Agent
 =============================================================================
 
-Ce fichier est un template de prompt personnalisé pour Ralphy.
-Modifiez-le pour adapter le comportement de l'agent à votre stack/projet.
+This file is a custom prompt template for Ralphy.
+Modify it to adapt agent behavior to your stack/project.
 
-IMPORTANT: Ce prompt DOIT contenir l'instruction "EXIT_SIGNAL" pour que
-l'agent puisse signaler la fin de son exécution.
+IMPORTANT: This prompt MUST contain the "EXIT_SIGNAL" instruction so
+the agent can signal the end of its execution.
 
-Placeholders disponibles (remplacés automatiquement à l'exécution):
+Available placeholders (replaced automatically at runtime):
 {common_placeholders}{specific}
 Documentation: https://github.com/your-org/ralphy#custom-prompts
 =============================================================================
@@ -237,16 +237,16 @@ console = Console()
 @click.group()
 @click.version_option(version=__version__, prog_name="ralphy")
 def main():
-    """Ralphy - Transforme un PRD en Pull Request."""
+    """Ralphy - Transforms a PRD into a Pull Request."""
     pass
 
 
 @main.command()
 @click.argument("feature_or_description", type=str)
-@click.option("--no-progress", is_flag=True, help="Désactive l'affichage de progression")
-@click.option("--fresh", is_flag=True, help="Force un redémarrage complet sans reprise")
+@click.option("--no-progress", is_flag=True, help="Disable progress display")
+@click.option("--fresh", is_flag=True, help="Force a full restart without resume")
 def start(feature_or_description: str, no_progress: bool, fresh: bool):
-    """Démarre un workflow Ralphy pour une feature.
+    """Starts a Ralphy workflow for a feature.
 
     FEATURE_OR_DESCRIPTION: Either a feature name (ex: user-authentication) or a
     feature description in quotes (ex: "implement auth with devise")
@@ -261,24 +261,24 @@ def start(feature_or_description: str, no_progress: bool, fresh: bool):
         - Generate a minimal PRD.md
         - Run the full workflow
 
-    Par défaut, si le workflow a été interrompu, il reprendra depuis la
-    dernière phase complétée. Utilisez --fresh pour forcer un redémarrage complet.
+    By default, if the workflow was interrupted, it will resume from the
+    last completed phase. Use --fresh to force a complete restart.
     """
     project = Path.cwd()
     logger = get_logger()
     show_progress = not no_progress
 
-    # Vérifications préliminaires
+    # Preliminary checks
     if not check_claude_installed():
-        logger.error("Claude Code CLI non trouvé. Installez-le avec: npm install -g @anthropic-ai/claude-code")
+        logger.error("Claude Code CLI not found. Install it with: npm install -g @anthropic-ai/claude-code")
         sys.exit(1)
 
     if not check_git_installed():
-        logger.error("Git non trouvé. Installez Git: https://git-scm.com/")
+        logger.error("Git not found. Install Git: https://git-scm.com/")
         sys.exit(1)
 
     if not check_gh_installed():
-        logger.error("GitHub CLI (gh) non trouvé. Installez-le: https://cli.github.com/")
+        logger.error("GitHub CLI (gh) not found. Install it: https://cli.github.com/")
         sys.exit(1)
 
     # Determine if this is quick start mode or normal mode

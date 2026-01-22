@@ -1,4 +1,4 @@
-"""Gestion de l'état du workflow Ralphy."""
+"""Ralphy workflow state management."""
 
 import json
 import os
@@ -13,7 +13,7 @@ from ralphy.constants import validate_feature_name
 
 
 class Phase(str, Enum):
-    """Phases du workflow."""
+    """Workflow phases."""
 
     IDLE = "idle"
     SPECIFICATION = "specification"
@@ -28,7 +28,7 @@ class Phase(str, Enum):
 
 
 class Status(str, Enum):
-    """Statuts possibles."""
+    """Possible statuses."""
 
     PENDING = "pending"
     RUNNING = "running"
@@ -36,8 +36,8 @@ class Status(str, Enum):
     FAILED = "failed"
 
 
-# Ordre canonique des phases du workflow (pour la logique de reprise)
-# Utilisé par orchestrator.py pour déterminer quelles phases sauter
+# Canonical order of workflow phases (for resume logic)
+# Used by orchestrator.py to determine which phases to skip
 PHASE_ORDER: list[Phase] = [
     Phase.SPECIFICATION,
     Phase.AWAITING_SPEC_VALIDATION,
@@ -48,9 +48,9 @@ PHASE_ORDER: list[Phase] = [
 ]
 
 
-# Transitions valides entre phases
-# Note: IDLE peut transitionner vers toutes les phases actives pour supporter
-# la reprise du workflow après une interruption (FAILED -> IDLE -> phase suivante)
+# Valid transitions between phases
+# Note: IDLE can transition to all active phases to support
+# resuming the workflow after an interruption (FAILED -> IDLE -> next phase)
 VALID_TRANSITIONS: dict[Phase, list[Phase]] = {
     Phase.IDLE: [
         Phase.SPECIFICATION,
@@ -67,14 +67,14 @@ VALID_TRANSITIONS: dict[Phase, list[Phase]] = {
     Phase.AWAITING_QA_VALIDATION: [Phase.PR, Phase.REJECTED],
     Phase.PR: [Phase.COMPLETED, Phase.FAILED],
     Phase.COMPLETED: [],
-    Phase.FAILED: [Phase.IDLE],  # Permet de redémarrer
-    Phase.REJECTED: [Phase.IDLE],  # Permet de redémarrer
+    Phase.FAILED: [Phase.IDLE],  # Allow restart
+    Phase.REJECTED: [Phase.IDLE],  # Allow restart
 }
 
 
 @dataclass
 class WorkflowState:
-    """État du workflow."""
+    """Workflow state."""
 
     phase: Phase = Phase.IDLE
     status: Status = Status.PENDING
@@ -95,7 +95,7 @@ class WorkflowState:
 
     @classmethod
     def from_dict(cls, data: dict) -> "WorkflowState":
-        """Crée un état depuis un dictionnaire."""
+        """Creates a state from a dictionary."""
         return cls(
             phase=Phase(data.get("phase", "idle")),
             status=Status(data.get("status", "pending")),

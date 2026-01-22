@@ -1,4 +1,4 @@
-"""Circuit breaker pour protéger contre les boucles infinies et agents bloqués."""
+"""Circuit breaker to protect against infinite loops and blocked agents."""
 
 import hashlib
 import threading
@@ -18,7 +18,7 @@ from ralphy.state import Phase
 
 
 class TriggerType(str, Enum):
-    """Types de triggers du circuit breaker."""
+    """Types of circuit breaker triggers."""
 
     INACTIVITY = "inactivity"
     REPEATED_ERROR = "repeated_error"
@@ -27,7 +27,7 @@ class TriggerType(str, Enum):
 
 
 class CircuitBreakerState(str, Enum):
-    """États du circuit breaker."""
+    """States of the circuit breaker."""
 
     CLOSED = "closed"
     OPEN = "open"
@@ -35,7 +35,7 @@ class CircuitBreakerState(str, Enum):
 
 @dataclass
 class CircuitBreakerContext:
-    """Contexte d'exécution pour le circuit breaker."""
+    """Execution context for the circuit breaker."""
 
     phase: Phase
     is_dev_agent: bool = False
@@ -44,7 +44,7 @@ class CircuitBreakerContext:
 
 @dataclass
 class _TriggerResult:
-    """Résultat interne d'un trigger (pour séparer lock et callbacks)."""
+    """Internal trigger result (to separate lock and callbacks)."""
 
     trigger_type: Optional[TriggerType] = None
     attempts: int = 0
@@ -52,17 +52,17 @@ class _TriggerResult:
 
 
 class CircuitBreaker:
-    """Circuit breaker pour détecter et prévenir les boucles infinies.
+    """Circuit breaker to detect and prevent infinite loops.
 
-    Surveille 4 types de triggers:
-    - INACTIVITY: Aucune sortie pendant X secondes
-    - REPEATED_ERROR: Même erreur répétée X fois
-    - TASK_STAGNATION: Pas de tâche complétée pendant X secondes
-    - OUTPUT_SIZE: Sortie dépassant X bytes
+    Monitors 4 types of triggers:
+    - INACTIVITY: No output for X seconds
+    - REPEATED_ERROR: Same error repeated X times
+    - TASK_STAGNATION: No task completion for X seconds
+    - OUTPUT_SIZE: Output exceeding X bytes
 
-    Le circuit breaker a 2 états:
-    - CLOSED: Fonctionnement normal, comptabilise les warnings
-    - OPEN: Circuit ouvert, l'agent doit être arrêté
+    The circuit breaker has 2 states:
+    - CLOSED: Normal operation, counts warnings
+    - OPEN: Circuit open, agent must be stopped
     """
 
     def __init__(
@@ -72,26 +72,26 @@ class CircuitBreaker:
         on_warning: Optional[Callable[[TriggerType, int], None]] = None,
         on_trip: Optional[Callable[[TriggerType], None]] = None,
     ):
-        """Initialise le circuit breaker.
+        """Initialize the circuit breaker.
 
         Args:
-            config: Configuration du circuit breaker
-            context: Contexte d'exécution (phase, agent, etc.)
-            on_warning: Callback appelé lors d'un warning (trigger, attempts)
-            on_trip: Callback appelé lors du trip (trigger)
+            config: Circuit breaker configuration
+            context: Execution context (phase, agent, etc.)
+            on_warning: Callback called on warning (trigger, attempts)
+            on_trip: Callback called on trip (trigger)
         """
         self._config = config
         self._context = context
         self._on_warning = on_warning
         self._on_trip = on_trip
 
-        # État interne thread-safe
+        # Thread-safe internal state
         self._lock = threading.Lock()
         self._state = CircuitBreakerState.CLOSED
         self._attempts = 0
         self._last_trigger: Optional[TriggerType] = None
 
-        # Tracking pour les triggers
+        # Trigger tracking
         self._last_output_time = time.monotonic()
         self._last_task_completion_time = time.monotonic()
         self._total_output_bytes = 0
@@ -101,30 +101,30 @@ class CircuitBreaker:
 
     @property
     def is_open(self) -> bool:
-        """Retourne True si le circuit est ouvert."""
+        """Returns True if the circuit is open."""
         with self._lock:
             return self._state == CircuitBreakerState.OPEN
 
     @property
     def state(self) -> CircuitBreakerState:
-        """Retourne l'état actuel du circuit breaker."""
+        """Returns the current state of the circuit breaker."""
         with self._lock:
             return self._state
 
     @property
     def last_trigger(self) -> Optional[TriggerType]:
-        """Retourne le dernier trigger qui a été activé."""
+        """Returns the last trigger that was activated."""
         with self._lock:
             return self._last_trigger
 
     @property
     def attempts(self) -> int:
-        """Retourne le nombre de tentatives (warnings) actuelles."""
+        """Returns the current number of attempts (warnings)."""
         with self._lock:
             return self._attempts
 
     def reset(self) -> None:
-        """Réinitialise le circuit breaker."""
+        """Resets the circuit breaker."""
         with self._lock:
             self._state = CircuitBreakerState.CLOSED
             self._attempts = 0
@@ -137,13 +137,13 @@ class CircuitBreaker:
             self._recent_output.clear()
 
     def record_output(self, line: str) -> Optional[TriggerType]:
-        """Enregistre une ligne de sortie et vérifie les triggers.
+        """Records an output line and checks for triggers.
 
         Args:
-            line: Ligne de sortie à enregistrer
+            line: Output line to record
 
         Returns:
-            TriggerType si un trigger a été activé et le circuit ouvert, None sinon
+            TriggerType if a trigger was activated and circuit opened, None otherwise
         """
         if not self._config.enabled:
             return None
@@ -176,14 +176,14 @@ class CircuitBreaker:
                 if error_hash:
                     trigger_result = self._check_repeated_error_internal(error_hash)
 
-        # Callbacks appelés EN DEHORS du lock pour éviter les deadlocks
+        # Callbacks called OUTSIDE lock to avoid deadlocks
         return self._notify_trigger(trigger_result)
 
     def check_inactivity(self) -> Optional[TriggerType]:
-        """Vérifie le trigger d'inactivité.
+        """Checks the inactivity trigger.
 
         Returns:
-            TriggerType.INACTIVITY si le timeout est dépassé et circuit ouvert
+            TriggerType.INACTIVITY if timeout exceeded and circuit opened
         """
         if not self._config.enabled:
             return None
@@ -200,22 +200,22 @@ class CircuitBreaker:
             if elapsed > timeout:
                 trigger_result = self._trigger_internal(TriggerType.INACTIVITY)
 
-        # Callbacks appelés EN DEHORS du lock
+        # Callbacks called OUTSIDE lock
         return self._notify_trigger(trigger_result)
 
     def check_task_stagnation(self) -> Optional[TriggerType]:
-        """Vérifie le trigger de stagnation des tâches.
+        """Checks the task stagnation trigger.
 
-        Note: Ce trigger ne s'applique qu'au dev-agent selon la spécification.
-        Pour les autres agents, cette méthode retourne toujours None.
+        Note: This trigger only applies to dev-agent according to spec.
+        For other agents, this method always returns None.
 
         Returns:
-            TriggerType.TASK_STAGNATION si le timeout est dépassé et circuit ouvert
+            TriggerType.TASK_STAGNATION if timeout exceeded and circuit opened
         """
         if not self._config.enabled:
             return None
 
-        # La stagnation des tâches ne concerne que le dev-agent (spec section 6.1)
+        # Task stagnation only applies to dev-agent (spec section 6.1)
         if not self._context.is_dev_agent:
             return None
 
@@ -230,40 +230,40 @@ class CircuitBreaker:
             if elapsed > self._config.task_stagnation_timeout:
                 trigger_result = self._trigger_internal(TriggerType.TASK_STAGNATION)
 
-        # Callbacks appelés EN DEHORS du lock
+        # Callbacks called OUTSIDE lock
         return self._notify_trigger(trigger_result)
 
     def _get_effective_inactivity_timeout(self) -> int:
-        """Retourne le timeout d'inactivité effectif selon le contexte.
+        """Returns the effective inactivity timeout based on context.
 
-        Cas spéciaux (par ordre de priorité):
-        - Test command détecté dans output récent: 300s (tests peuvent être longs)
-        - Phase PR: 120s (opérations git plus longues)
-        - Phase QA: 180s (analyse de code prend du temps)
+        Special cases (by priority):
+        - Test command detected in recent output: 300s (tests can be long)
+        - PR phase: 120s (git operations are longer)
+        - QA phase: 180s (code analysis takes time)
         """
-        # Test command en cours - priorité maximale car tests peuvent être longs
+        # Test command running - highest priority as tests can be long
         if self._context.test_command:
             recent_text = "".join(self._recent_output)
             if self._context.test_command in recent_text:
                 return CB_TEST_COMMAND_INACTIVITY_TIMEOUT_SECONDS
 
-        # Phase PR - délai plus long pour les opérations git
+        # PR phase - longer delay for git operations
         if self._context.phase == Phase.PR:
             return CB_PR_PHASE_INACTIVITY_TIMEOUT_SECONDS
 
-        # Phase QA - délai plus long pour l'analyse de code
+        # QA phase - longer delay for code analysis
         if self._context.phase == Phase.QA:
             return CB_QA_PHASE_INACTIVITY_TIMEOUT_SECONDS
 
         return self._config.inactivity_timeout
 
     def _extract_error_hash(self, line: str) -> Optional[str]:
-        """Extrait un hash d'erreur d'une ligne si c'est une erreur.
+        """Extracts an error hash from a line if it's an error.
 
-        Détecte les patterns d'erreur communs:
-        - "Error:" ou "ERROR:"
-        - "error:" (minuscule)
-        - "Exception:" ou "EXCEPTION:"
+        Detects common error patterns:
+        - "Error:" or "ERROR:"
+        - "error:" (lowercase)
+        - "Exception:" or "EXCEPTION:"
         - "Traceback"
         - "FAILED"
         """
@@ -279,20 +279,20 @@ class CircuitBreaker:
 
         for pattern in error_patterns:
             if pattern in line_lower:
-                # Hash les 200 premiers caractères pour identifier l'erreur unique
+                # Hash first 200 characters to identify unique error
                 error_content = line[:200].strip()
                 return hashlib.md5(error_content.encode()).hexdigest()
 
         return None
 
     def _check_repeated_error_internal(self, error_hash: str) -> Optional[_TriggerResult]:
-        """Vérifie si une erreur est répétée trop souvent (appelé sous lock).
+        """Checks if an error is repeated too often (called under lock).
 
         Args:
-            error_hash: Hash MD5 de l'erreur
+            error_hash: MD5 hash of the error
 
         Returns:
-            _TriggerResult si le seuil est atteint, None sinon
+            _TriggerResult if threshold reached, None otherwise
         """
         # Decrement count for oldest error if deque is at capacity
         if len(self._error_hashes) == self._error_hashes.maxlen:
@@ -312,13 +312,13 @@ class CircuitBreaker:
         return None
 
     def _is_task_completion(self, line: str) -> bool:
-        """Détecte si une ligne indique une complétion de tâche.
+        """Detects if a line indicates task completion.
 
-        Patterns reconnus:
-        - "completed" ou "COMPLETED"
-        - "done" ou "DONE"
-        - "finished" ou "FINISHED"
-        - "success" ou "SUCCESS"
+        Recognized patterns:
+        - "completed" or "COMPLETED"
+        - "done" or "DONE"
+        - "finished" or "FINISHED"
+        - "success" or "SUCCESS"
         - Checkmarks: "✓", "✔", "[x]", "[X]"
         """
         line_lower = line.lower()
@@ -343,22 +343,22 @@ class CircuitBreaker:
         return False
 
     def _trigger_internal(self, trigger_type: TriggerType) -> _TriggerResult:
-        """Active un trigger et retourne le résultat (appelé sous lock).
+        """Activates a trigger and returns the result (called under lock).
 
-        Cette méthode ne fait que mettre à jour l'état interne.
-        Les callbacks sont appelés par _notify_trigger() en dehors du lock.
+        This method only updates internal state.
+        Callbacks are called by _notify_trigger() outside the lock.
 
         Args:
-            trigger_type: Type de trigger activé
+            trigger_type: Type of trigger activated
 
         Returns:
-            _TriggerResult avec les informations pour notifier les callbacks
+            _TriggerResult with information for callback notification
         """
         self._attempts += 1
         self._last_trigger = trigger_type
 
         if self._attempts >= self._config.max_attempts:
-            # Trip - ouvre le circuit
+            # Trip - open the circuit
             self._state = CircuitBreakerState.OPEN
             return _TriggerResult(
                 trigger_type=trigger_type,
@@ -366,7 +366,7 @@ class CircuitBreaker:
                 is_open=True,
             )
         else:
-            # Warning seulement
+            # Warning only
             return _TriggerResult(
                 trigger_type=trigger_type,
                 attempts=self._attempts,
@@ -374,27 +374,27 @@ class CircuitBreaker:
             )
 
     def _notify_trigger(self, result: Optional[_TriggerResult]) -> Optional[TriggerType]:
-        """Notifie les callbacks suite à un trigger (appelé hors lock).
+        """Notifies callbacks following a trigger (called outside lock).
 
-        Cette méthode doit être appelée EN DEHORS du lock pour éviter
-        les deadlocks si les callbacks tentent d'accéder au circuit breaker.
+        This method must be called OUTSIDE the lock to avoid deadlocks
+        if callbacks try to access the circuit breaker.
 
         Args:
-            result: Résultat du trigger, ou None si pas de trigger
+            result: Trigger result, or None if no trigger
 
         Returns:
-            TriggerType si le circuit est maintenant OPEN, None sinon
+            TriggerType if circuit is now OPEN, None otherwise
         """
         if result is None or result.trigger_type is None:
             return None
 
         if result.is_open:
-            # Circuit ouvert - appelle on_trip
+            # Circuit open - call on_trip
             if self._on_trip:
                 self._on_trip(result.trigger_type)
             return result.trigger_type
         else:
-            # Warning seulement - appelle on_warning
+            # Warning only - call on_warning
             if self._on_warning:
                 self._on_warning(result.trigger_type, result.attempts)
             return None

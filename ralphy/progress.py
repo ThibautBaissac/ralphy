@@ -1,4 +1,4 @@
-"""Visualisation de progression temps réel pour Ralphy."""
+"""Real-time progress visualization for Ralphy."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class ActivityType(Enum):
-    """Types d'activité détectés dans l'output."""
+    """Types of activity detected in output."""
 
     IDLE = "idle"
     WRITING_FILE = "writing_file"
@@ -35,14 +35,14 @@ class ActivityType(Enum):
 
 @dataclass
 class Activity:
-    """Activité courante détectée."""
+    """Current detected activity."""
 
     type: ActivityType
     description: str
     detail: Optional[str] = None
 
 
-# Patterns de détection d'activité
+# Activity detection patterns
 ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
     ActivityType.WRITING_FILE: [
         r"(?:Writing|Creating|Wrote)\s+[`'\"]?([^\s`'\"]+\.[a-z]+)",
@@ -65,33 +65,21 @@ ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
         r"rails \w+",
     ],
     ActivityType.TASK_START: [
-        r"\*\*Statut\*\*:\s*in_progress",  # Détecte quand une tâche passe en in_progress
-        r"###\s*Tâche\s*([\d.]+).*\[([^\]]+)\]",
+        r"\*\*Status\*\*:\s*in_progress",  # Detects when a task transitions to in_progress
         r"###\s*Task\s*([\d.]+).*\[([^\]]+)\]",
-        r"Working on (?:Task|Tâche)\s*([\d.]+)",
-        r"Starting (?:Task|Tâche)\s*([\d.]+)",
-        r"Implementing (?:Task|Tâche)\s*([\d.]+)",
-        r"Now (?:implementing|working on)\s*(?:Task|Tâche)\s*([\d.]+)",
-        # French patterns
-        r"Passons à la Tâche\s*([\d.]+)",
-        r"Je (?:passe|commence) (?:à )?la [Tt]âche\s*([\d.]+)",
-        r"[Tt]âche\s*([\d.]+)\s*(?:en cours|démarrée)",
-        r"Commençons (?:par |avec )?la [Tt]âche\s*([\d.]+)",
-        r"Je marque la tâche\s*([\d.]+).*in_progress",
+        r"Working on Task\s*([\d.]+)",
+        r"Starting Task\s*([\d.]+)",
+        r"Implementing Task\s*([\d.]+)",
+        r"Now (?:implementing|working on)\s*Task\s*([\d.]+)",
         r"pending.*→.*in_progress",  # Edit tool changing status
     ],
     ActivityType.TASK_COMPLETE: [
-        r"\*\*Statut\*\*:\s*completed",
-        r"[✓✔]\s*T(?:ask|âche)",
+        r"\*\*Status\*\*:\s*completed",
+        r"[✓✔]\s*Task",
         r"Task\s*([\d.]+).*completed",
-        r"Tâche\s*([\d.]+).*(?:complétée|terminée|finie)",
-        r"Completed\s*(?:Task|Tâche)\s*([\d.]+)",
+        r"Completed\s*Task\s*([\d.]+)",
         r"status.*completed",
-        # French patterns
-        r"Je marque.*(?:completed|terminée)",
-        r"Tâche\s*([\d.]+).*(?:est |maintenant )?(?:completed|terminée)",
         r"in_progress.*→.*completed",  # Edit tool changing status
-        r"La tâche\s*([\d.]+).*(?:est )?(?:terminée|complète)",
     ],
     ActivityType.READING_FILE: [
         r"Reading\s+[`'\"]?([^\s`'\"]+)",
@@ -108,22 +96,22 @@ ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
 
 
 class OutputParser:
-    """Parse l'output Claude pour détecter les activités."""
+    """Parses Claude output to detect activities."""
 
     def __init__(self):
         self._compiled_patterns: dict[ActivityType, list[re.Pattern]] = {}
         self._compile_patterns()
 
     def _compile_patterns(self) -> None:
-        """Compile les regex patterns."""
+        """Compiles regex patterns."""
         for activity_type, patterns in ACTIVITY_PATTERNS.items():
             self._compiled_patterns[activity_type] = [
                 re.compile(p, re.IGNORECASE | re.MULTILINE) for p in patterns
             ]
 
     def parse(self, text: str) -> Optional[Activity]:
-        """Parse le texte et retourne l'activité détectée."""
-        # Priorité: TASK_START/COMPLETE détectés en premier pour le logging
+        """Parses text and returns detected activity."""
+        # Priority: TASK_START/COMPLETE detected first for logging
         priority_order = [
             ActivityType.TASK_START,
             ActivityType.TASK_COMPLETE,
@@ -139,9 +127,9 @@ class OutputParser:
             for pattern in patterns:
                 match = pattern.search(text)
                 if match:
-                    # Extrait les groupes capturés
+                    # Extract captured groups
                     detail = match.group(1) if match.lastindex and match.lastindex >= 1 else None
-                    # Pour TASK_START, le groupe 2 contient le nom de la tâche
+                    # For TASK_START, group 2 contains the task name
                     detail2 = match.group(2) if match.lastindex and match.lastindex >= 2 else None
                     return Activity(
                         type=activity_type,
@@ -154,7 +142,7 @@ class OutputParser:
     def _get_description(
         self, activity_type: ActivityType, detail: Optional[str], detail2: Optional[str] = None
     ) -> str:
-        """Génère une description lisible de l'activité."""
+        """Generates a readable activity description."""
         descriptions = {
             ActivityType.TASK_START: f"Task {detail}: {detail2}" if detail2 else f"Starting task {detail}" if detail else "Starting task",
             ActivityType.TASK_COMPLETE: f"Completed task {detail}" if detail else "Task completed",
@@ -169,15 +157,15 @@ class OutputParser:
 
 @dataclass
 class ProgressState:
-    """État de la progression."""
+    """Progress state."""
 
     phase_name: str = ""
     phase_progress: float = 0.0
     tasks_completed: int = 0
     tasks_total: int = 0
     current_activity: Optional[Activity] = None
-    current_task_id: Optional[str] = None  # Ex: "1.9"
-    current_task_name: Optional[str] = None  # Ex: "Model - Créer modèle Team"
+    current_task_id: Optional[str] = None  # E.g., "1.9"
+    current_task_name: Optional[str] = None  # E.g., "Model - Create Team model"
     last_output_lines: list[str] = field(default_factory=list)
     # New fields for enriched display
     model_name: str = ""
@@ -190,7 +178,7 @@ class ProgressState:
 
 
 class ProgressDisplay:
-    """Affichage de progression avec Rich Live."""
+    """Progress display with Rich Live."""
 
     MAX_OUTPUT_LINES = 3
 
@@ -237,7 +225,7 @@ class ProgressDisplay:
         timeout: int = 0,
         feature_name: str = "",
     ) -> None:
-        """Démarre l'affichage de progression."""
+        """Starts progress display."""
         with self._lock:
             self._state = ProgressState(
                 phase_name=phase_name.upper(),
@@ -285,7 +273,7 @@ class ProgressDisplay:
             self._live.start()
 
     def stop(self) -> None:
-        """Arrête l'affichage de progression."""
+        """Stops progress display."""
         with self._lock:
             self._active = False
             if self._live:
@@ -293,7 +281,7 @@ class ProgressDisplay:
                 self._live = None
 
     def update_phase_progress(self, progress: float) -> None:
-        """Met à jour la progression de la phase (0-100)."""
+        """Updates phase progress (0-100)."""
         with self._lock:
             self._state.phase_progress = min(100, max(0, progress))
             if self._phase_task_id is not None:
@@ -303,7 +291,7 @@ class ProgressDisplay:
             self._refresh()
 
     def update_tasks(self, completed: int, total: int) -> None:
-        """Met à jour le compteur de tâches."""
+        """Updates task counter."""
         with self._lock:
             self._state.tasks_completed = completed
             self._state.tasks_total = total
@@ -317,7 +305,7 @@ class ProgressDisplay:
                     self._tasks_task_id, completed=completed, total=total
                 )
 
-            # Calcul progression phase basée sur les tâches
+            # Calculate phase progress based on tasks
             if total > 0:
                 self._state.phase_progress = (completed / total) * 100
                 if self._phase_task_id is not None:
@@ -328,9 +316,9 @@ class ProgressDisplay:
             self._refresh()
 
     def process_output(self, text: str) -> None:
-        """Traite l'output et met à jour l'affichage."""
+        """Processes output and updates display."""
         with self._lock:
-            # Détecte l'activité
+            # Detects activity
             activity = self._parser.parse(text)
             if activity:
                 self._state.current_activity = activity
@@ -339,9 +327,9 @@ class ProgressDisplay:
                 if self._on_activity:
                     self._on_activity(activity)
 
-                # Gère le début d'une tâche
+                # Handles task start
                 if activity.type == ActivityType.TASK_START:
-                    # detail format: "task_id:task_name" ou juste "task_id"
+                    # detail format: "task_id:task_name" or just "task_id"
                     if activity.detail and ":" in activity.detail:
                         parts = activity.detail.split(":", 1)
                         self._state.current_task_id = parts[0]
@@ -349,7 +337,7 @@ class ProgressDisplay:
                     else:
                         self._state.current_task_id = activity.detail
                         self._state.current_task_name = None
-                    # Callback pour logging
+                    # Callback for logging
                     if self._on_task_event:
                         self._on_task_event(
                             "start",
@@ -357,7 +345,7 @@ class ProgressDisplay:
                             self._state.current_task_name,
                         )
 
-                # Compte les tâches complétées
+                # Counts completed tasks
                 elif activity.type == ActivityType.TASK_COMPLETE:
                     self._state.tasks_completed += 1
                     completed_task_id = activity.detail or self._state.current_task_id
@@ -376,7 +364,7 @@ class ProgressDisplay:
                                 self._phase_task_id,
                                 completed=self._state.phase_progress,
                             )
-                    # Callback pour logging
+                    # Callback for logging
                     if self._on_task_event:
                         self._on_task_event(
                             "complete",
@@ -387,7 +375,7 @@ class ProgressDisplay:
                     self._state.current_task_id = None
                     self._state.current_task_name = None
 
-            # Garde les dernières lignes d'output
+            # Keeps last output lines
             lines = text.strip().split("\n")
             for line in lines:
                 line = line.strip()
@@ -427,7 +415,7 @@ class ProgressDisplay:
         return f"{minutes}m"
 
     def _refresh(self) -> None:
-        """Rafraîchit l'affichage.
+        """Refreshes the display.
 
         Note: This method expects the caller to hold self._lock.
         It performs a defensive check to avoid race conditions
@@ -439,7 +427,7 @@ class ProgressDisplay:
             live.update(self._render())
 
     def _render(self) -> Panel:
-        """Génère le rendu du panel de progression."""
+        """Generates the progress panel render."""
         elements = []
 
         # Header section: Feature name
@@ -531,7 +519,7 @@ class ProgressDisplay:
         if self._state.last_output_lines:
             output_text = Text()
             for line in self._state.last_output_lines[-self.MAX_OUTPUT_LINES :]:
-                # Tronque les lignes trop longues
+                # Truncates long lines
                 display_line = line[:70] + "..." if len(line) > 70 else line
                 output_text.append("  > ", style="dim")
                 output_text.append(display_line + "\n", style="dim")
@@ -545,5 +533,5 @@ class ProgressDisplay:
 
     @property
     def is_active(self) -> bool:
-        """Retourne True si l'affichage est actif."""
+        """Returns True if display is active."""
         return self._active

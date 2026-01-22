@@ -1,4 +1,4 @@
-"""Classe de base pour les agents Ralphy."""
+"""Base class for Ralphy agents."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class AgentResult:
-    """Résultat d'exécution d'un agent."""
+    """Result of agent execution."""
 
     success: bool
     output: str
@@ -32,7 +32,7 @@ class AgentResult:
 
 
 class BaseAgent(ABC):
-    """Classe abstraite pour tous les agents."""
+    """Abstract base class for all agents."""
 
     name: str = "base-agent"
     prompt_file: str = ""
@@ -60,23 +60,23 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def build_prompt(self) -> str:
-        """Construit le prompt pour l'agent."""
+        """Builds the prompt for the agent."""
         pass
 
     @abstractmethod
     def parse_output(self, response: ClaudeResponse) -> AgentResult:
-        """Parse la sortie de Claude et retourne le résultat."""
+        """Parses Claude's output and returns the result."""
         pass
 
     def load_prompt_template(self) -> str:
-        """Charge le template de prompt depuis le projet ou le package.
+        """Load prompt template from project or package.
 
-        Ordre de priorité:
-        1. .ralphy/prompts/{prompt_file} (custom du projet)
-        2. ralphy/prompts/{prompt_file} (défaut du package)
+        Priority order:
+        1. .ralphy/prompts/{prompt_file} (project custom)
+        2. ralphy/prompts/{prompt_file} (package default)
 
-        Les prompts custom sont validés avant utilisation. S'ils sont invalides,
-        le template par défaut est utilisé avec un warning.
+        Custom prompts are validated before use. If invalid, the default
+        template is used with a warning.
 
         Results are cached at the class level to avoid repeated disk I/O.
         """
@@ -98,7 +98,7 @@ class BaseAgent(ABC):
 
     def _load_prompt_from_disk(self) -> str:
         """Load prompt template from disk (custom or package default)."""
-        # 1. Cherche dans le projet
+        # 1. Look in the project
         local_path = self.project_path / ".ralphy" / "prompts" / self.prompt_file
         if local_path.exists():
             content = local_path.read_text(encoding="utf-8")
@@ -106,11 +106,11 @@ class BaseAgent(ABC):
                 return content
             self.logger.warn(f"Custom prompt {self.prompt_file} invalid, using default")
 
-        # 2. Fallback au package
+        # 2. Fallback to package
         try:
             return resources.files("ralphy.prompts").joinpath(self.prompt_file).read_text(encoding="utf-8")
         except (FileNotFoundError, TypeError):
-            self.logger.error(f"Template {self.prompt_file} non trouvé")
+            self.logger.error(f"Template {self.prompt_file} not found")
             return ""
 
     @classmethod
@@ -172,17 +172,17 @@ class BaseAgent(ABC):
         return result
 
     def _validate_prompt(self, content: str) -> bool:
-        """Valide qu'un prompt custom est utilisable.
+        """Validates that a custom prompt is usable.
 
-        Vérifications:
-        - Contenu non vide et minimum MIN_PROMPT_SIZE_CHARS caractères
-        - Contient l'instruction EXIT_SIGNAL (obligatoire pour tous les agents)
+        Checks:
+        - Non-empty content with minimum MIN_PROMPT_SIZE_CHARS characters
+        - Contains EXIT_SIGNAL instruction (required for all agents)
 
         Args:
-            content: Contenu du prompt à valider.
+            content: Prompt content to validate.
 
         Returns:
-            True si le prompt est valide, False sinon.
+            True if prompt is valid, False otherwise.
         """
         if not content or len(content) < MIN_PROMPT_SIZE_CHARS:
             self.logger.warn(f"Custom prompt is empty or too short (< {MIN_PROMPT_SIZE_CHARS} chars)")
@@ -193,7 +193,7 @@ class BaseAgent(ABC):
         return True
 
     def read_file(self, filename: str) -> Optional[str]:
-        """Lit un fichier du projet."""
+        """Reads a file from the project."""
         filepath = self.project_path / filename
         if filepath.exists():
             return filepath.read_text(encoding="utf-8")
@@ -221,21 +221,21 @@ class BaseAgent(ABC):
         phase: Optional[Phase] = None,
         **prompt_kwargs,
     ) -> AgentResult:
-        """Exécute l'agent avec retry automatique et circuit breaker.
+        """Runs the agent with automatic retry and circuit breaker.
 
         Args:
-            timeout: Timeout en secondes. Si non spécifié, utilise
-                     config.timeouts.agent comme fallback.
-            phase: Phase du workflow pour le contexte du circuit breaker.
-            **prompt_kwargs: Arguments additionnels passés à build_prompt().
+            timeout: Timeout in seconds. If not specified, uses
+                     config.timeouts.agent as fallback.
+            phase: Workflow phase for circuit breaker context.
+            **prompt_kwargs: Additional arguments passed to build_prompt().
 
         Returns:
-            AgentResult avec le résultat de l'exécution.
+            AgentResult with execution results.
 
-        Le retry est déclenché sur timeout, erreur (return code != 0),
-        ou circuit breaker triggered.
-        Le nombre de tentatives et le délai sont configurables via
-        config.retry.max_attempts et config.retry.delay_seconds.
+        Retry is triggered on timeout, error (return code != 0),
+        or circuit breaker triggered.
+        The number of attempts and delay are configurable via
+        config.retry.max_attempts and config.retry.delay_seconds.
         """
         self.logger.agent(self.name, "started")
 
@@ -245,15 +245,15 @@ class BaseAgent(ABC):
                 success=False,
                 output="",
                 files_generated=[],
-                error_message="Impossible de construire le prompt",
+                error_message="Failed to build prompt",
             )
 
-        # Utilise le timeout spécifique ou le fallback agent
+        # Use specific timeout or agent fallback
         agent_timeout = timeout or self.config.timeouts.agent
         max_attempts = self.config.retry.max_attempts
         delay = self.config.retry.delay_seconds
 
-        # Configuration du circuit breaker
+        # Circuit breaker configuration
         cb_config = self.config.circuit_breaker
         cb_context = CircuitBreakerContext(
             phase=phase or Phase.IMPLEMENTATION,
@@ -269,7 +269,7 @@ class BaseAgent(ABC):
                 self.logger.agent(self.name, f"retry {attempt}/{max_attempts}")
                 time.sleep(delay)
 
-            # Crée le circuit breaker si activé (reset à chaque tentative)
+            # Create circuit breaker if enabled (reset on each attempt)
             circuit_breaker = None
             if cb_config.enabled:
                 circuit_breaker = CircuitBreaker(
@@ -316,7 +316,7 @@ class BaseAgent(ABC):
 
             # Timeout - retry possible
             if response.timed_out:
-                last_error = f"Timeout après {agent_timeout}s"
+                last_error = f"Timeout after {agent_timeout}s"
                 if attempt < max_attempts:
                     self.logger.warn(f"{self.name}: {last_error}, retry...")
                     continue
@@ -328,9 +328,9 @@ class BaseAgent(ABC):
                     error_message=last_error,
                 )
 
-            # Erreur Claude - retry possible
+            # Claude error - retry possible
             if response.return_code != 0:
-                last_error = f"Code retour: {response.return_code}"
+                last_error = f"Return code: {response.return_code}"
                 if attempt < max_attempts:
                     self.logger.warn(f"{self.name}: {last_error}, retry...")
                     continue
@@ -342,10 +342,10 @@ class BaseAgent(ABC):
                     error_message=last_error,
                 )
 
-            # Claude a répondu correctement - pas de retry nécessaire
+            # Claude responded correctly - no retry needed
             break
 
-        # Parse le résultat (pas de retry sur échec de parsing/EXIT_SIGNAL)
+        # Parse result (no retry on parsing/EXIT_SIGNAL failure)
         result = self.parse_output(last_response)
 
         if result.success:
