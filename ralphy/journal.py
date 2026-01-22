@@ -133,11 +133,58 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+class JournalWriter:
+    """Handles file I/O operations for the workflow journal.
+
+    Encapsulates all file operations (JSONL append, JSON write) to follow
+    the Single Responsibility Principle. Thread-safe file operations.
+    """
+
+    def __init__(self, journal_path: Path, summary_path: Path):
+        """Initialize the journal writer.
+
+        Args:
+            journal_path: Path to the JSONL event log file
+            summary_path: Path to the JSON summary file
+        """
+        self._journal_path = journal_path
+        self._summary_path = summary_path
+
+    def _ensure_dir(self) -> None:
+        """Ensure the parent directory exists."""
+        self._journal_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def clear_journal(self) -> None:
+        """Clear the journal file (for fresh starts)."""
+        if self._journal_path.exists():
+            self._journal_path.unlink()
+
+    def append_event(self, event: JournalEvent) -> None:
+        """Append a single event to the JSONL file.
+
+        Args:
+            event: The event to append
+        """
+        self._ensure_dir()
+        with open(self._journal_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event.to_dict()) + "\n")
+
+    def write_summary(self, summary: WorkflowSummary) -> None:
+        """Write the workflow summary to JSON file.
+
+        Args:
+            summary: The workflow summary to write
+        """
+        self._ensure_dir()
+        with open(self._summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary.to_dict(), f, indent=2)
+
+
 class WorkflowJournal:
     """Thread-safe journal for workflow progress events.
 
     Writes events to a JSONL file in real-time and generates a summary
-    JSON file at workflow end.
+    JSON file at workflow end. Delegates file I/O to JournalWriter.
 
     Files are written to .ralphy/ directory within the feature directory:
     - progress.jsonl: Real-time event log (append-only)
@@ -162,29 +209,34 @@ class WorkflowJournal:
         # Import constants here to avoid circular import
         from ralphy.constants import JOURNAL_FILE, JOURNAL_SUMMARY_FILE
 
-        self._journal_path = feature_dir / ".ralphy" / JOURNAL_FILE
-        self._summary_path = feature_dir / ".ralphy" / JOURNAL_SUMMARY_FILE
+        journal_path = feature_dir / ".ralphy" / JOURNAL_FILE
+        summary_path = feature_dir / ".ralphy" / JOURNAL_SUMMARY_FILE
+        self._writer = JournalWriter(journal_path, summary_path)
 
-    def _ensure_journal_dir(self) -> None:
-        """Ensure the .ralphy directory exists."""
-        self._journal_path.parent.mkdir(parents=True, exist_ok=True)
+    def _create_event(
+        self,
+        event_type: EventType,
+        phase: Optional[str] = None,
+        **data: Any,
+    ) -> JournalEvent:
+        """Create a JournalEvent with current timestamp.
 
-    def _write_event(self, event: JournalEvent) -> None:
-        """Write a single event to the JSONL file.
+        Helper method to reduce duplication in record_* methods.
 
-        Thread-safe, appends to file.
+        Args:
+            event_type: Type of the event
+            phase: Phase name (uses current phase if None)
+            **data: Additional data fields for the event
+
+        Returns:
+            JournalEvent with timestamp and provided data
         """
-        self._ensure_journal_dir()
-        with open(self._journal_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event.to_dict()) + "\n")
-
-    def _write_summary(self) -> None:
-        """Write the workflow summary to JSON file."""
-        if not self._summary:
-            return
-        self._ensure_journal_dir()
-        with open(self._summary_path, "w", encoding="utf-8") as f:
-            json.dump(self._summary.to_dict(), f, indent=2)
+        return JournalEvent(
+            timestamp=_now_iso(),
+            event_type=event_type,
+            phase=phase if phase is not None else self._current_phase_name,
+            data=data,
+        )
 
     def start_workflow(self, fresh: bool = False) -> None:
         """Record workflow start event.
@@ -200,8 +252,8 @@ class WorkflowJournal:
             now = _now_iso()
 
             # Clear previous journal if fresh start
-            if fresh and self._journal_path.exists():
-                self._journal_path.unlink()
+            if fresh:
+                self._writer.clear_journal()
 
             self._summary = WorkflowSummary(
                 feature_name=self.feature_name,
@@ -209,13 +261,20 @@ class WorkflowJournal:
                 fresh_start=fresh,
             )
 
+            event = self._create_event(
+                EventType.WORKFLOW_START,
+                phase=None,
+                feature=self.feature_name,
+                fresh=fresh,
+            )
+            # Override timestamp since we already have `now`
             event = JournalEvent(
                 timestamp=now,
                 event_type=EventType.WORKFLOW_START,
                 phase=None,
                 data={"feature": self.feature_name, "fresh": fresh},
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     def end_workflow(self, outcome: str) -> None:
         """Record workflow end event and write summary.
@@ -255,8 +314,8 @@ class WorkflowJournal:
                     "total_cost_usd": self._summary.total_cost_usd,
                 },
             )
-            self._write_event(event)
-            self._write_summary()
+            self._writer.append_event(event)
+            self._writer.write_summary(self._summary)
 
     def start_phase(
         self,
@@ -297,7 +356,7 @@ class WorkflowJournal:
                     "tasks_total": tasks_total,
                 },
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     def end_phase(
         self,
@@ -347,7 +406,7 @@ class WorkflowJournal:
                     "token_usage": token_usage,
                 },
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
             self._current_phase = None
             self._current_phase_name = None
@@ -373,16 +432,12 @@ class WorkflowJournal:
                 EventType.TASK_START if event_type == "start" else EventType.TASK_COMPLETE
             )
 
-            event = JournalEvent(
-                timestamp=_now_iso(),
-                event_type=journal_event_type,
-                phase=self._current_phase_name,
-                data={
-                    "task_id": task_id,
-                    "task_name": task_name,
-                },
+            event = self._create_event(
+                journal_event_type,
+                task_id=task_id,
+                task_name=task_name,
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     def record_activity(self, activity: Activity) -> None:
         """Record a detected activity event.
@@ -394,17 +449,13 @@ class WorkflowJournal:
             if not self._started:
                 return
 
-            event = JournalEvent(
-                timestamp=_now_iso(),
-                event_type=EventType.ACTIVITY,
-                phase=self._current_phase_name,
-                data={
-                    "type": activity.type.value,
-                    "description": activity.description,
-                    "detail": activity.detail,
-                },
+            event = self._create_event(
+                EventType.ACTIVITY,
+                type=activity.type.value,
+                description=activity.description,
+                detail=activity.detail,
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     def record_token_update(self, usage: TokenUsage, cost: float) -> None:
         """Record a token usage update.
@@ -417,21 +468,17 @@ class WorkflowJournal:
             if not self._started:
                 return
 
-            event = JournalEvent(
-                timestamp=_now_iso(),
-                event_type=EventType.TOKEN_UPDATE,
-                phase=self._current_phase_name,
-                data={
-                    "input_tokens": usage.input_tokens,
-                    "output_tokens": usage.output_tokens,
-                    "cache_read_tokens": usage.cache_read_tokens,
-                    "cache_creation_tokens": usage.cache_creation_tokens,
-                    "total_tokens": usage.total_tokens,
-                    "context_utilization": usage.context_utilization,
-                    "cost_usd": cost,
-                },
+            event = self._create_event(
+                EventType.TOKEN_UPDATE,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cache_read_tokens=usage.cache_read_tokens,
+                cache_creation_tokens=usage.cache_creation_tokens,
+                total_tokens=usage.total_tokens,
+                context_utilization=usage.context_utilization,
+                cost_usd=cost,
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
             # Update current phase cost tracking
             if self._current_phase:
@@ -460,17 +507,13 @@ class WorkflowJournal:
             if not self._started:
                 return
 
-            event = JournalEvent(
-                timestamp=_now_iso(),
-                event_type=EventType.CIRCUIT_BREAKER,
-                phase=self._current_phase_name,
-                data={
-                    "trigger_type": trigger_type,
-                    "attempts": attempts,
-                    "is_open": is_open,
-                },
+            event = self._create_event(
+                EventType.CIRCUIT_BREAKER,
+                trigger_type=trigger_type,
+                attempts=attempts,
+                is_open=is_open,
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     def record_validation(
         self,
@@ -489,16 +532,13 @@ class WorkflowJournal:
             if not self._started:
                 return
 
-            event = JournalEvent(
-                timestamp=_now_iso(),
-                event_type=EventType.VALIDATION,
+            event = self._create_event(
+                EventType.VALIDATION,
                 phase=phase,
-                data={
-                    "approved": approved,
-                    "feedback": feedback,
-                },
+                approved=approved,
+                feedback=feedback,
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     def record_error(self, error_message: str, error_type: str = "unknown") -> None:
         """Record an error event.
@@ -511,16 +551,12 @@ class WorkflowJournal:
             if not self._started:
                 return
 
-            event = JournalEvent(
-                timestamp=_now_iso(),
-                event_type=EventType.ERROR,
-                phase=self._current_phase_name,
-                data={
-                    "error_type": error_type,
-                    "message": error_message,
-                },
+            event = self._create_event(
+                EventType.ERROR,
+                error_type=error_type,
+                message=error_message,
             )
-            self._write_event(event)
+            self._writer.append_event(event)
 
     @property
     def is_started(self) -> bool:

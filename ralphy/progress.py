@@ -177,8 +177,170 @@ class ProgressState:
     total_cost_usd: float = 0.0
 
 
+@dataclass
+class RenderContext:
+    """Context for rendering the progress panel.
+
+    Groups together all the data needed by ProgressRenderer to generate
+    a Rich Panel. This separates rendering concerns from state management.
+    """
+
+    state: ProgressState
+    phase_progress: Progress
+    tasks_progress: Progress
+    phase_task_id: Optional[int]
+    tasks_task_id: Optional[int]
+
+
+class ProgressRenderer:
+    """Stateless renderer for progress panels.
+
+    Generates Rich Panel elements from RenderContext. Separated from
+    ProgressDisplay to follow Single Responsibility Principle.
+    """
+
+    MAX_OUTPUT_LINES = 3
+
+    @staticmethod
+    def format_elapsed(elapsed_seconds: float) -> str:
+        """Format elapsed time as HH:MM:SS or MM:SS."""
+        minutes, seconds = divmod(int(elapsed_seconds), 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours > 0:
+            return f"{hours:d}h{minutes:02d}m{seconds:02d}s"
+        return f"{minutes:02d}:{seconds:02d}"
+
+    @staticmethod
+    def format_timeout(timeout_seconds: int) -> str:
+        """Format timeout for display (e.g., '4h00m', '30m')."""
+        hours, remainder = divmod(timeout_seconds, 3600)
+        minutes = remainder // 60
+        if hours > 0:
+            return f"{hours}h{minutes:02d}m"
+        return f"{minutes}m"
+
+    def render(self, context: RenderContext) -> Panel:
+        """Generate the progress panel from render context.
+
+        Args:
+            context: RenderContext containing state and progress bars
+
+        Returns:
+            Rich Panel with formatted progress display
+        """
+        elements = []
+        state = context.state
+
+        # Header section: Feature name
+        if state.feature_name:
+            feature_text = Text()
+            feature_text.append("Feature: ", style="dim")
+            feature_text.append(state.feature_name, style="bold cyan")
+            elements.append(feature_text)
+
+        # Phase and model line
+        info_line = Text()
+        info_line.append("Phase: ", style="dim")
+        info_line.append(state.phase_name, style="bold yellow")
+        if state.model_name:
+            info_line.append("  Model: ", style="dim")
+            info_line.append(state.model_name, style="bold magenta")
+        elements.append(info_line)
+
+        # Elapsed time and timeout line
+        if state.phase_started_at:
+            elapsed = (datetime.now() - state.phase_started_at).total_seconds()
+            time_line = Text()
+            time_line.append("Elapsed: ", style="dim")
+            time_line.append(self.format_elapsed(elapsed), style="bold green")
+            if state.phase_timeout > 0:
+                time_line.append("  Timeout: ", style="dim")
+                time_line.append(self.format_timeout(state.phase_timeout), style="bold")
+            elements.append(time_line)
+
+        # Context window and cost line
+        if state.token_usage:
+            usage = state.token_usage
+            utilization = usage.context_utilization
+            context_line = Text()
+            context_line.append("Context: ", style="dim")
+
+            # Color code utilization: green < 60%, yellow 60-80%, red > 80%
+            if utilization < 60:
+                util_style = "bold green"
+            elif utilization < 80:
+                util_style = "bold yellow"
+            else:
+                util_style = "bold red"
+
+            context_line.append(f"{utilization:.1f}%", style=util_style)
+            context_line.append(
+                f" ({usage.total_tokens:,}/{usage.context_window:,} tokens)", style="dim"
+            )
+
+            # Add cost if available
+            if state.total_cost_usd > 0:
+                context_line.append("  Cost: ", style="dim")
+                context_line.append(f"${state.total_cost_usd:.4f}", style="bold")
+
+            elements.append(context_line)
+
+        # Separator before progress bars
+        elements.append(Rule(style="dim"))
+
+        # Progress bars
+        elements.append(context.phase_progress)
+        if context.tasks_task_id is not None:
+            elements.append(context.tasks_progress)
+
+        # Separator before activity
+        elements.append(Rule(style="dim"))
+
+        # Current task (more prominent)
+        if state.current_task_id:
+            task_text = Text()
+            task_text.append("● ", style="green bold")
+            task_text.append(f"Task {state.current_task_id}", style="bold")
+            if state.current_task_name:
+                task_text.append(f": {state.current_task_name}", style="")
+            elements.append(task_text)
+
+        # Current activity (sub-detail)
+        if state.current_activity:
+            activity_text = Text()
+            activity_text.append("  > ", style="dim")
+            activity_text.append(state.current_activity.description, style="dim italic")
+            elements.append(activity_text)
+        elif not state.current_task_id:
+            # Show generic activity when no task is active
+            activity_text = Text()
+            activity_text.append("● ", style="green bold")
+            activity_text.append("Working...", style="dim italic")
+            elements.append(activity_text)
+
+        # Last output lines (reduced prominence)
+        if state.last_output_lines:
+            output_text = Text()
+            for line in state.last_output_lines[-self.MAX_OUTPUT_LINES:]:
+                # Truncates long lines
+                display_line = line[:70] + "..." if len(line) > 70 else line
+                output_text.append("  > ", style="dim")
+                output_text.append(display_line + "\n", style="dim")
+            elements.append(output_text)
+
+        return Panel(
+            Group(*elements),
+            title="[bold]Ralphy Progress[/bold]",
+            border_style="blue",
+        )
+
+
 class ProgressDisplay:
-    """Progress display with Rich Live."""
+    """Progress display with Rich Live.
+
+    Coordinates progress state management and rendering. Delegates
+    panel rendering to ProgressRenderer for SRP compliance.
+    """
 
     MAX_OUTPUT_LINES = 3
 
@@ -196,6 +358,7 @@ class ProgressDisplay:
         self._active = False
         self._on_task_event = on_task_event  # Callback(event_type, task_id, task_name)
         self._on_activity = on_activity  # Callback(activity) for detected activities
+        self._renderer = ProgressRenderer()
 
         # Progress bars
         self._phase_progress = Progress(
@@ -264,8 +427,9 @@ class ProgressDisplay:
                 self._tasks_task_id = None
 
             self._active = True
+            context = self._build_render_context()
             self._live = Live(
-                self._render(),
+                self._renderer.render(context),
                 console=self.console,
                 refresh_per_second=4,
                 transient=True,
@@ -398,21 +562,19 @@ class ProgressDisplay:
             self._state.total_cost_usd = cost
             self._refresh()
 
-    def _format_elapsed(self, elapsed_seconds: float) -> str:
-        """Format elapsed time as HH:MM:SS or MM:SS."""
-        minutes, seconds = divmod(int(elapsed_seconds), 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours > 0:
-            return f"{hours:d}h{minutes:02d}m{seconds:02d}s"
-        return f"{minutes:02d}:{seconds:02d}"
+    def _build_render_context(self) -> RenderContext:
+        """Build render context from current state.
 
-    def _format_timeout(self, timeout_seconds: int) -> str:
-        """Format timeout for display (e.g., '4h00m', '30m')."""
-        hours, remainder = divmod(timeout_seconds, 3600)
-        minutes = remainder // 60
-        if hours > 0:
-            return f"{hours}h{minutes:02d}m"
-        return f"{minutes}m"
+        Returns:
+            RenderContext with current state and progress bars
+        """
+        return RenderContext(
+            state=self._state,
+            phase_progress=self._phase_progress,
+            tasks_progress=self._tasks_progress,
+            phase_task_id=self._phase_task_id,
+            tasks_task_id=self._tasks_task_id,
+        )
 
     def _refresh(self) -> None:
         """Refreshes the display.
@@ -424,112 +586,8 @@ class ProgressDisplay:
         # Capture local reference to avoid race with stop()
         live = self._live
         if live and self._active:
-            live.update(self._render())
-
-    def _render(self) -> Panel:
-        """Generates the progress panel render."""
-        elements = []
-
-        # Header section: Feature name
-        if self._state.feature_name:
-            feature_text = Text()
-            feature_text.append("Feature: ", style="dim")
-            feature_text.append(self._state.feature_name, style="bold cyan")
-            elements.append(feature_text)
-
-        # Phase and model line
-        info_line = Text()
-        info_line.append("Phase: ", style="dim")
-        info_line.append(self._state.phase_name, style="bold yellow")
-        if self._state.model_name:
-            info_line.append("  Model: ", style="dim")
-            info_line.append(self._state.model_name, style="bold magenta")
-        elements.append(info_line)
-
-        # Elapsed time and timeout line
-        if self._state.phase_started_at:
-            elapsed = (datetime.now() - self._state.phase_started_at).total_seconds()
-            time_line = Text()
-            time_line.append("Elapsed: ", style="dim")
-            time_line.append(self._format_elapsed(elapsed), style="bold green")
-            if self._state.phase_timeout > 0:
-                time_line.append("  Timeout: ", style="dim")
-                time_line.append(self._format_timeout(self._state.phase_timeout), style="bold")
-            elements.append(time_line)
-
-        # Context window and cost line
-        if self._state.token_usage:
-            usage = self._state.token_usage
-            utilization = usage.context_utilization
-            context_line = Text()
-            context_line.append("Context: ", style="dim")
-
-            # Color code utilization: green < 60%, yellow 60-80%, red > 80%
-            if utilization < 60:
-                util_style = "bold green"
-            elif utilization < 80:
-                util_style = "bold yellow"
-            else:
-                util_style = "bold red"
-
-            context_line.append(f"{utilization:.1f}%", style=util_style)
-            context_line.append(f" ({usage.total_tokens:,}/{usage.context_window:,} tokens)", style="dim")
-
-            # Add cost if available
-            if self._state.total_cost_usd > 0:
-                context_line.append("  Cost: ", style="dim")
-                context_line.append(f"${self._state.total_cost_usd:.4f}", style="bold")
-
-            elements.append(context_line)
-
-        # Separator before progress bars
-        elements.append(Rule(style="dim"))
-
-        # Progress bars
-        elements.append(self._phase_progress)
-        if self._tasks_task_id is not None:
-            elements.append(self._tasks_progress)
-
-        # Separator before activity
-        elements.append(Rule(style="dim"))
-
-        # Current task (more prominent)
-        if self._state.current_task_id:
-            task_text = Text()
-            task_text.append("● ", style="green bold")
-            task_text.append(f"Task {self._state.current_task_id}", style="bold")
-            if self._state.current_task_name:
-                task_text.append(f": {self._state.current_task_name}", style="")
-            elements.append(task_text)
-
-        # Current activity (sub-detail)
-        if self._state.current_activity:
-            activity_text = Text()
-            activity_text.append("  > ", style="dim")
-            activity_text.append(self._state.current_activity.description, style="dim italic")
-            elements.append(activity_text)
-        elif not self._state.current_task_id:
-            # Show generic activity when no task is active
-            activity_text = Text()
-            activity_text.append("● ", style="green bold")
-            activity_text.append("Working...", style="dim italic")
-            elements.append(activity_text)
-
-        # Last output lines (reduced prominence)
-        if self._state.last_output_lines:
-            output_text = Text()
-            for line in self._state.last_output_lines[-self.MAX_OUTPUT_LINES :]:
-                # Truncates long lines
-                display_line = line[:70] + "..." if len(line) > 70 else line
-                output_text.append("  > ", style="dim")
-                output_text.append(display_line + "\n", style="dim")
-            elements.append(output_text)
-
-        return Panel(
-            Group(*elements),
-            title="[bold]Ralphy Progress[/bold]",
-            border_style="blue",
-        )
+            context = self._build_render_context()
+            live.update(self._renderer.render(context))
 
     @property
     def is_active(self) -> bool:

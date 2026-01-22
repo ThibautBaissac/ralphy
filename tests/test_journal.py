@@ -12,6 +12,7 @@ import pytest
 from ralphy.journal import (
     EventType,
     JournalEvent,
+    JournalWriter,
     PhaseSummary,
     WorkflowJournal,
     WorkflowSummary,
@@ -648,3 +649,203 @@ class TestWorkflowJournalInterruptionRecovery:
             # Only one workflow_start (from fresh start)
             start_count = event_types.count("workflow_start")
             assert start_count == 1
+
+
+class TestJournalWriter:
+    """Tests for JournalWriter class."""
+
+    @pytest.fixture
+    def temp_paths(self, tmp_path):
+        """Create temporary journal paths."""
+        journal_path = tmp_path / ".ralphy" / "progress.jsonl"
+        summary_path = tmp_path / ".ralphy" / "progress_summary.json"
+        return journal_path, summary_path
+
+    def test_writer_initialization(self, temp_paths):
+        """Test JournalWriter initialization."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+        assert writer._journal_path == journal_path
+        assert writer._summary_path == summary_path
+
+    def test_append_event_creates_directory(self, temp_paths):
+        """Test that append_event creates parent directory."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+
+        event = JournalEvent(
+            timestamp="2026-01-22T10:00:00+00:00",
+            event_type=EventType.WORKFLOW_START,
+            phase=None,
+            data={"feature": "test"},
+        )
+        writer.append_event(event)
+
+        assert journal_path.exists()
+        with open(journal_path) as f:
+            line = f.readline()
+            data = json.loads(line)
+            assert data["event_type"] == "workflow_start"
+
+    def test_append_event_appends(self, temp_paths):
+        """Test that append_event appends to existing file."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+
+        event1 = JournalEvent(
+            timestamp="2026-01-22T10:00:00+00:00",
+            event_type=EventType.WORKFLOW_START,
+            phase=None,
+            data={},
+        )
+        event2 = JournalEvent(
+            timestamp="2026-01-22T10:01:00+00:00",
+            event_type=EventType.PHASE_START,
+            phase="SPECIFICATION",
+            data={},
+        )
+
+        writer.append_event(event1)
+        writer.append_event(event2)
+
+        with open(journal_path) as f:
+            lines = f.readlines()
+            assert len(lines) == 2
+            assert json.loads(lines[0])["event_type"] == "workflow_start"
+            assert json.loads(lines[1])["event_type"] == "phase_start"
+
+    def test_clear_journal(self, temp_paths):
+        """Test that clear_journal removes the file."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+
+        # Create journal with some content
+        event = JournalEvent(
+            timestamp="2026-01-22T10:00:00+00:00",
+            event_type=EventType.WORKFLOW_START,
+            phase=None,
+            data={},
+        )
+        writer.append_event(event)
+        assert journal_path.exists()
+
+        # Clear it
+        writer.clear_journal()
+        assert not journal_path.exists()
+
+    def test_clear_journal_nonexistent(self, temp_paths):
+        """Test that clear_journal handles nonexistent file."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+
+        # Should not raise
+        writer.clear_journal()
+        assert not journal_path.exists()
+
+    def test_write_summary(self, temp_paths):
+        """Test writing workflow summary."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+
+        summary = WorkflowSummary(
+            feature_name="test-feature",
+            started_at="2026-01-22T10:00:00+00:00",
+            ended_at="2026-01-22T11:00:00+00:00",
+            total_duration_seconds=3600.0,
+            outcome="completed",
+            total_cost_usd=1.50,
+        )
+        writer.write_summary(summary)
+
+        assert summary_path.exists()
+        with open(summary_path) as f:
+            data = json.load(f)
+            assert data["feature_name"] == "test-feature"
+            assert data["outcome"] == "completed"
+            assert data["total_cost_usd"] == 1.50
+
+    def test_write_summary_creates_directory(self, temp_paths):
+        """Test that write_summary creates parent directory."""
+        journal_path, summary_path = temp_paths
+        writer = JournalWriter(journal_path, summary_path)
+
+        summary = WorkflowSummary(
+            feature_name="test",
+            started_at="2026-01-22T10:00:00+00:00",
+        )
+        writer.write_summary(summary)
+
+        assert summary_path.parent.exists()
+        assert summary_path.exists()
+
+
+class TestCreateEventHelper:
+    """Tests for the _create_event helper method."""
+
+    @pytest.fixture
+    def journal(self, tmp_path):
+        """Create a journal instance for testing."""
+        feature_dir = tmp_path / "test-feature"
+        feature_dir.mkdir()
+        return WorkflowJournal(feature_dir, "test-feature")
+
+    def test_create_event_basic(self, journal):
+        """Test basic event creation."""
+        journal.start_workflow()
+        journal._current_phase_name = "IMPLEMENTATION"
+
+        event = journal._create_event(EventType.TASK_START, task_id="1.1")
+
+        assert event.event_type == EventType.TASK_START
+        assert event.phase == "IMPLEMENTATION"
+        assert event.data["task_id"] == "1.1"
+        # Verify timestamp is a valid ISO format
+        assert event.timestamp is not None
+        datetime.fromisoformat(event.timestamp)  # Should not raise
+
+    def test_create_event_with_explicit_phase(self, journal):
+        """Test event creation with explicit phase."""
+        journal.start_workflow()
+        journal._current_phase_name = "IMPLEMENTATION"
+
+        event = journal._create_event(
+            EventType.VALIDATION,
+            phase="SPECIFICATION",
+            approved=True,
+        )
+
+        assert event.phase == "SPECIFICATION"
+        assert event.data["approved"] is True
+
+    def test_create_event_multiple_data_fields(self, journal):
+        """Test event creation with multiple data fields."""
+        journal.start_workflow()
+
+        event = journal._create_event(
+            EventType.TOKEN_UPDATE,
+            input_tokens=1000,
+            output_tokens=500,
+            cost_usd=0.05,
+        )
+
+        assert event.data["input_tokens"] == 1000
+        assert event.data["output_tokens"] == 500
+        assert event.data["cost_usd"] == 0.05
+
+    def test_create_event_uses_current_phase(self, journal):
+        """Test that _create_event uses current phase when not specified."""
+        journal.start_workflow()
+        journal.start_phase("QA")
+
+        event = journal._create_event(EventType.ERROR, message="Test error")
+
+        assert event.phase == "QA"
+
+    def test_create_event_without_phase(self, journal):
+        """Test event creation when no phase is active."""
+        journal.start_workflow()
+
+        event = journal._create_event(EventType.WORKFLOW_END, outcome="completed")
+
+        assert event.phase is None
+        assert event.data["outcome"] == "completed"

@@ -29,6 +29,251 @@ PID_FILE = ".ralphy/claude.pid"
 ABORT_CHECK_INTERVAL = 0.1
 
 
+class ProcessManager:
+    """Manages subprocess lifecycle (creation, PID tracking, cleanup).
+
+    Encapsulates all subprocess management concerns:
+    - Process creation with proper configuration
+    - PID file management for external abort capability
+    - Process cleanup and resource release
+    """
+
+    def __init__(self, working_dir: Path, pid_file: Path):
+        """Initialize the process manager.
+
+        Args:
+            working_dir: Working directory for subprocess execution
+            pid_file: Path to store the process PID
+        """
+        self._working_dir = working_dir
+        self._pid_file = pid_file
+        self._process: Optional[subprocess.Popen] = None
+
+    def start(self, cmd: list[str]) -> subprocess.Popen:
+        """Start a subprocess with the given command.
+
+        Args:
+            cmd: Command and arguments to execute
+
+        Returns:
+            The started subprocess
+        """
+        self._process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=self._working_dir,
+            bufsize=0,  # Unbuffered for responsiveness
+        )
+        self._save_pid(self._process.pid)
+        return self._process
+
+    def _save_pid(self, pid: int) -> None:
+        """Save the PID of the process for external abort capability."""
+        self._pid_file.parent.mkdir(parents=True, exist_ok=True)
+        self._pid_file.write_text(str(pid))
+
+    def cleanup(self) -> None:
+        """Clean up process resources and PID file."""
+        self._clear_pid()
+        if self._process and self._process.stdout:
+            try:
+                self._process.stdout.close()
+            except Exception:
+                pass
+        self._process = None
+
+    def _clear_pid(self) -> None:
+        """Remove the PID file."""
+        if self._pid_file.exists():
+            self._pid_file.unlink()
+
+    def kill(self) -> None:
+        """Kill the running process."""
+        if self._process:
+            self._process.kill()
+
+    def wait(self, timeout: Optional[float] = None) -> Optional[int]:
+        """Wait for process to complete.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            Return code, or None if timeout expired
+
+        Raises:
+            subprocess.TimeoutExpired: If timeout expires
+        """
+        if self._process:
+            self._process.wait(timeout=timeout)
+            return self._process.returncode
+        return None
+
+    def poll(self) -> Optional[int]:
+        """Check if process has terminated.
+
+        Returns:
+            Return code if terminated, None otherwise
+        """
+        if self._process:
+            return self._process.poll()
+        return None
+
+    @property
+    def process(self) -> Optional[subprocess.Popen]:
+        """Get the current subprocess."""
+        return self._process
+
+    @property
+    def return_code(self) -> int:
+        """Get the return code of the process.
+
+        Returns:
+            The return code, or -1 if process not started or not terminated
+        """
+        if self._process and self._process.returncode is not None:
+            return self._process.returncode
+        return -1
+
+
+class StreamReader:
+    """Non-blocking output reader with abort support.
+
+    Handles reading subprocess output using select() on Unix,
+    enabling regular abort state checking and circuit breaker integration.
+    """
+
+    def __init__(
+        self,
+        abort_event: threading.Event,
+        json_parser: Optional[JsonStreamParser],
+        circuit_breaker: Optional[CircuitBreaker],
+        on_output: Optional[Callable[[str], None]],
+        on_cb_trigger: Callable[[], None],
+    ):
+        """Initialize the stream reader.
+
+        Args:
+            abort_event: Threading event to signal abort
+            json_parser: Optional JSON parser for stream-json format
+            circuit_breaker: Optional circuit breaker for loop detection
+            on_output: Callback for processed output text
+            on_cb_trigger: Callback when circuit breaker triggers
+        """
+        self._abort_event = abort_event
+        self._json_parser = json_parser
+        self._circuit_breaker = circuit_breaker
+        self._on_output = on_output
+        self._on_cb_trigger = on_cb_trigger
+
+    def read_lines(self, process: subprocess.Popen) -> list[str]:
+        """Read output lines from process with abort checking.
+
+        Uses select() for non-blocking reading with timeout, enabling
+        regular abort state checking. Integrates circuit breaker to
+        detect infinite loops.
+
+        When JSON streaming is enabled, parses JSON lines to extract text content.
+        The extracted text is passed to on_output callback and used for circuit breaker.
+
+        Args:
+            process: The subprocess to read from
+
+        Returns:
+            List of output lines (text content if JSON parsing enabled)
+        """
+        output_lines: list[str] = []
+
+        if not process or not process.stdout:
+            return output_lines
+
+        stdout_fd = process.stdout.fileno()
+        buffer = StringIO()
+
+        while not self._abort_event.is_set():
+            try:
+                # Use select with timeout to check abort regularly
+                if sys.platform != "win32":
+                    readable, _, _ = select.select([stdout_fd], [], [], ABORT_CHECK_INTERVAL)
+                    if not readable:
+                        # Select timeout - check if process terminated
+                        if process.poll() is not None:
+                            break
+
+                        # Check inactivity via circuit breaker
+                        if self._circuit_breaker:
+                            trigger = self._circuit_breaker.check_inactivity()
+                            if trigger:
+                                self._on_cb_trigger()
+                                self._abort_event.set()
+                                break
+                        continue
+
+                # Non-blocking read
+                chunk = process.stdout.read(1)
+                if not chunk:
+                    # EOF reached
+                    break
+
+                buffer.write(chunk)
+
+                # If we have a complete line, process it
+                if chunk == "\n":
+                    line_content = buffer.getvalue()
+                    self._process_line(line_content, output_lines)
+                    buffer = StringIO()
+
+            except (IOError, OSError, ValueError):
+                # ValueError can occur if the file descriptor is closed
+                break
+
+        # Flush remaining buffer
+        if buffer.tell() > 0 and not self._abort_event.is_set():
+            remaining = buffer.getvalue()
+            self._process_line(remaining, output_lines, add_newline=False)
+
+        return output_lines
+
+    def _process_line(
+        self, line_content: str, output_lines: list[str], add_newline: bool = True
+    ) -> None:
+        """Process a single line of output.
+
+        Args:
+            line_content: The line content to process
+            output_lines: List to append processed output to
+            add_newline: Whether to add newline to text content
+        """
+        if self._json_parser:
+            text_content = self._json_parser.parse_line(line_content)
+            # Reset circuit breaker inactivity for ANY valid JSON line,
+            # not just text content. This ensures "system" init messages
+            # count as activity to prevent false inactivity triggers.
+            if self._circuit_breaker and line_content.strip():
+                trigger = self._circuit_breaker.record_output(text_content or "[system]")
+                if trigger:
+                    self._on_cb_trigger()
+                    self._abort_event.set()
+                    return
+            if text_content:
+                output_lines.append(text_content + "\n" if add_newline else text_content)
+                if self._on_output:
+                    self._on_output(text_content)
+        else:
+            # Non-JSON mode: process raw line
+            output_lines.append(line_content)
+            if self._on_output:
+                self._on_output(line_content)
+            # Record output in circuit breaker
+            if self._circuit_breaker:
+                trigger = self._circuit_breaker.record_output(line_content)
+                if trigger:
+                    self._on_cb_trigger()
+                    self._abort_event.set()
+
+
 @dataclass
 class TokenUsage:
     """Track token usage from Claude Code CLI."""
@@ -209,7 +454,12 @@ class JsonStreamParser:
 
 
 class ClaudeRunner:
-    """Executor for Claude Code CLI commands."""
+    """Executor for Claude Code CLI commands.
+
+    Coordinates subprocess execution, output streaming, and circuit breaker
+    monitoring. Delegates subprocess lifecycle to ProcessManager and output
+    reading to StreamReader.
+    """
 
     def __init__(
         self,
@@ -226,128 +476,16 @@ class ClaudeRunner:
         self.circuit_breaker = circuit_breaker
         self.model = model
         self.on_token_update = on_token_update
-        self._process: Optional[subprocess.Popen] = None
         self._abort_event = threading.Event()
         self._cb_triggered = False
         self._cb_lock = threading.Lock()  # Protects _cb_triggered across threads
-        self._pid_file = working_dir / PID_FILE
+        self._process_manager = ProcessManager(working_dir, working_dir / PID_FILE)
         self._json_parser: Optional[JsonStreamParser] = None
 
-    def _save_pid(self, pid: int) -> None:
-        """Saves the PID of the Claude process."""
-        self._pid_file.parent.mkdir(parents=True, exist_ok=True)
-        self._pid_file.write_text(str(pid))
-
-    def _clear_pid(self) -> None:
-        """Removes the PID file."""
-        if self._pid_file.exists():
-            self._pid_file.unlink()
-
-    def _read_output_with_abort_check(
-        self,
-        output_lines: list[str],
-    ) -> None:
-        """Reads process output with periodic abort verification.
-
-        Uses select() on Unix for non-blocking reading with timeout,
-        enabling regular abort state checking.
-        Also integrates circuit breaker to detect infinite loops.
-
-        When JSON streaming is enabled, parses JSON lines to extract text content.
-        The extracted text is passed to on_output callback and used for circuit breaker.
-        """
-        # Capture local reference to avoid race conditions
-        # when main thread sets self._process = None in finally
-        process = self._process
-        if not process or not process.stdout:
-            return
-
-        stdout_fd = process.stdout.fileno()
-        buffer = StringIO()
-
-        while not self._abort_event.is_set():
-            try:
-                # Use select with timeout to check abort regularly
-                if sys.platform != "win32":
-                    readable, _, _ = select.select([stdout_fd], [], [], ABORT_CHECK_INTERVAL)
-                    if not readable:
-                        # Select timeout - check if process terminated
-                        if process.poll() is not None:
-                            break
-
-                        # Check inactivity via circuit breaker
-                        if self.circuit_breaker:
-                            trigger = self.circuit_breaker.check_inactivity()
-                            if trigger:
-                                with self._cb_lock:
-                                    self._cb_triggered = True
-                                self._abort_event.set()
-                                break
-                        continue
-
-                # Non-blocking read
-                chunk = process.stdout.read(1)
-                if not chunk:
-                    # EOF reached
-                    break
-
-                buffer.write(chunk)
-
-                # If we have a complete line, process it
-                if chunk == "\n":
-                    line_content = buffer.getvalue()
-                    # Parse JSON line if parser is available
-                    if self._json_parser:
-                        text_content = self._json_parser.parse_line(line_content)
-                        # Reset circuit breaker inactivity for ANY valid JSON line,
-                        # not just text content. This ensures "system" init messages
-                        # count as activity to prevent false inactivity triggers.
-                        if self.circuit_breaker and line_content.strip():
-                            trigger = self.circuit_breaker.record_output(
-                                text_content or "[system]"
-                            )
-                            if trigger:
-                                with self._cb_lock:
-                                    self._cb_triggered = True
-                                self._abort_event.set()
-                                break
-                        if text_content:
-                            output_lines.append(text_content + "\n")
-                            if self.on_output:
-                                self.on_output(text_content)
-                    else:
-                        # Non-JSON mode: process raw line
-                        output_lines.append(line_content)
-                        if self.on_output:
-                            self.on_output(line_content)
-                        # Record output in circuit breaker
-                        if self.circuit_breaker:
-                            trigger = self.circuit_breaker.record_output(line_content)
-                            if trigger:
-                                with self._cb_lock:
-                                    self._cb_triggered = True
-                                self._abort_event.set()
-                                break
-
-                    buffer = StringIO()
-
-            except (IOError, OSError, ValueError):
-                # ValueError can occur if the file descriptor is closed
-                break
-
-        # Flush remaining buffer
-        if buffer.tell() > 0 and not self._abort_event.is_set():
-            remaining = buffer.getvalue()
-            if self._json_parser:
-                text_content = self._json_parser.parse_line(remaining)
-                if text_content:
-                    output_lines.append(text_content)
-                    if self.on_output:
-                        self.on_output(text_content)
-            else:
-                output_lines.append(remaining)
-                if self.on_output:
-                    self.on_output(remaining)
+    def _on_cb_trigger(self) -> None:
+        """Callback when circuit breaker triggers."""
+        with self._cb_lock:
+            self._cb_triggered = True
 
     def _cb_monitor_task_stagnation(self) -> None:
         """Daemon thread that monitors task stagnation.
@@ -359,17 +497,38 @@ class ClaudeRunner:
             if self.circuit_breaker:
                 trigger = self.circuit_breaker.check_task_stagnation()
                 if trigger:
-                    with self._cb_lock:
-                        self._cb_triggered = True
+                    self._on_cb_trigger()
                     self._abort_event.set()
                     break
             # Check every second
             self._abort_event.wait(timeout=1.0)
 
+    def _build_command(self, prompt: str) -> list[str]:
+        """Build the Claude CLI command.
+
+        Args:
+            prompt: The prompt to send to Claude
+
+        Returns:
+            List of command arguments
+        """
+        cmd = [
+            "claude",
+            "--print",
+            "--dangerously-skip-permissions",
+            "--output-format=stream-json",
+            "--verbose",
+        ]
+
+        if self.model:
+            cmd.extend(["--model", self.model])
+
+        cmd.extend(["-p", prompt])
+        return cmd
+
     def run(self, prompt: str) -> ClaudeResponse:
         """Executes a Claude command and returns the response."""
         logger = get_logger()
-        output_lines: list[str] = []
         timed_out = False
 
         # Reset abort state and circuit breaker
@@ -383,41 +542,28 @@ class ClaudeRunner:
 
         # Create JSON parser with token update callback
         self._json_parser = JsonStreamParser(
-            on_text=None,  # Text handled in _read_output_with_abort_check
+            on_text=None,  # Text handled in StreamReader
             on_usage=self.on_token_update,
         )
 
-        cmd = [
-            "claude",
-            "--print",
-            "--dangerously-skip-permissions",
-            "--output-format=stream-json",
-            "--verbose",
-        ]
+        # Create stream reader
+        stream_reader = StreamReader(
+            abort_event=self._abort_event,
+            json_parser=self._json_parser,
+            circuit_breaker=self.circuit_breaker,
+            on_output=self.on_output,
+            on_cb_trigger=self._on_cb_trigger,
+        )
 
-        # Add model if specified
-        if self.model:
-            cmd.extend(["--model", self.model])
-
-        cmd.extend(["-p", prompt])
+        cmd = self._build_command(prompt)
 
         try:
-            self._process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                cwd=self.working_dir,
-                bufsize=0,  # Unbuffered for responsiveness
-            )
-
-            # Save PID for external abort capability
-            self._save_pid(self._process.pid)
+            process = self._process_manager.start(cmd)
 
             # Reader thread with abort verification
+            output_lines: list[str] = []
             reader_thread = threading.Thread(
-                target=self._read_output_with_abort_check,
-                args=(output_lines,),
+                target=lambda: output_lines.extend(stream_reader.read_lines(process)),
             )
             reader_thread.start()
 
@@ -434,8 +580,8 @@ class ClaudeRunner:
             elapsed = 0.0
             while elapsed < self.timeout:
                 if self._abort_event.is_set():
-                    self._process.kill()
-                    self._process.wait()  # Reap process to get proper return code
+                    self._process_manager.kill()
+                    self._process_manager.wait()  # Reap process to get proper return code
                     with self._cb_lock:
                         cb_triggered = self._cb_triggered
                     if cb_triggered:
@@ -445,19 +591,23 @@ class ClaudeRunner:
                     break
 
                 try:
-                    self._process.wait(timeout=ABORT_CHECK_INTERVAL)
+                    self._process_manager.wait(timeout=ABORT_CHECK_INTERVAL)
                     break  # Process terminated
                 except subprocess.TimeoutExpired:
                     elapsed += ABORT_CHECK_INTERVAL
 
             # Timeout reached
-            if elapsed >= self.timeout and self._process.poll() is None:
+            if elapsed >= self.timeout and self._process_manager.poll() is None:
                 timed_out = True
-                self._process.kill()
-                self._process.wait()  # Reap process to get proper return code
+                self._process_manager.kill()
+                self._process_manager.wait()  # Reap process to get proper return code
                 logger.error(f"Claude timeout after {self.timeout}s")
 
-            return_code = self._process.returncode if self._process.returncode is not None else -1
+            # Wait for reader thread to complete before accessing output_lines
+            if reader_thread and reader_thread.is_alive():
+                reader_thread.join(timeout=2)
+
+            return_code = self._process_manager.return_code
             full_output = "".join(output_lines)
             exit_signal = EXIT_SIGNAL in full_output
 
@@ -499,20 +649,12 @@ class ClaudeRunner:
                 reader_thread.join(timeout=2)
             if cb_monitor_thread and cb_monitor_thread.is_alive():
                 cb_monitor_thread.join(timeout=1)
-            self._clear_pid()
-            # Explicit stdout close to prevent resource leak
-            if self._process and self._process.stdout:
-                try:
-                    self._process.stdout.close()
-                except Exception:
-                    pass
-            self._process = None
+            self._process_manager.cleanup()
 
     def abort(self) -> None:
         """Stops current execution (responsive in ~100ms)."""
         self._abort_event.set()
-        if self._process:
-            self._process.kill()
+        self._process_manager.kill()
 
 
 def abort_running_claude(project_path: Path) -> bool:

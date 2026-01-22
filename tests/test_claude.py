@@ -1,6 +1,7 @@
 """Tests for claude module."""
 
 import tempfile
+import threading
 import time
 from io import StringIO
 from pathlib import Path
@@ -11,6 +12,9 @@ import pytest
 from ralphy.claude import (
     PID_FILE,
     ClaudeRunner,
+    JsonStreamParser,
+    ProcessManager,
+    StreamReader,
     abort_running_claude,
     check_claude_installed,
     check_gh_installed,
@@ -231,3 +235,211 @@ class TestClaudeRunnerPerformance:
             # Verify all content was captured
             total_content = "".join(output_lines)
             assert len(total_content) == size
+
+
+class TestProcessManager:
+    """Tests for the ProcessManager class."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Create a temporary project directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            (project_path / ".ralphy").mkdir()
+            yield project_path
+
+    def test_init_stores_paths(self, temp_project):
+        """Test that ProcessManager stores working_dir and pid_file."""
+        pid_file = temp_project / ".ralphy" / "test.pid"
+        pm = ProcessManager(temp_project, pid_file)
+        assert pm._working_dir == temp_project
+        assert pm._pid_file == pid_file
+
+    def test_process_initially_none(self, temp_project):
+        """Test that process is None before start."""
+        pm = ProcessManager(temp_project, temp_project / ".ralphy" / "test.pid")
+        assert pm.process is None
+        assert pm.return_code == -1
+
+    def test_start_creates_process_and_pid_file(self, temp_project):
+        """Test that start creates subprocess and saves PID."""
+        pid_file = temp_project / ".ralphy" / "test.pid"
+        pm = ProcessManager(temp_project, pid_file)
+
+        try:
+            # Use a simple command that exits quickly
+            process = pm.start(["echo", "hello"])
+            assert process is not None
+            assert pm.process is not None
+            assert pid_file.exists()
+            assert int(pid_file.read_text()) == process.pid
+        finally:
+            pm.cleanup()
+
+    def test_cleanup_removes_pid_file(self, temp_project):
+        """Test that cleanup removes the PID file."""
+        pid_file = temp_project / ".ralphy" / "test.pid"
+        pm = ProcessManager(temp_project, pid_file)
+
+        pm.start(["echo", "hello"])
+        pm.wait()
+        pm.cleanup()
+
+        assert not pid_file.exists()
+        assert pm.process is None
+
+    def test_kill_terminates_process(self, temp_project):
+        """Test that kill terminates a running process."""
+        pid_file = temp_project / ".ralphy" / "test.pid"
+        pm = ProcessManager(temp_project, pid_file)
+
+        try:
+            # Start a long-running process
+            pm.start(["sleep", "10"])
+            pm.kill()
+            pm.wait()
+            # Process should be terminated (negative return code on Unix for killed processes)
+            assert pm.poll() is not None
+        finally:
+            pm.cleanup()
+
+    def test_poll_returns_none_for_running_process(self, temp_project):
+        """Test that poll returns None for a running process."""
+        pid_file = temp_project / ".ralphy" / "test.pid"
+        pm = ProcessManager(temp_project, pid_file)
+
+        try:
+            pm.start(["sleep", "10"])
+            # Process should still be running
+            assert pm.poll() is None
+        finally:
+            pm.kill()
+            pm.cleanup()
+
+    def test_return_code_after_completion(self, temp_project):
+        """Test return code after process completes."""
+        pid_file = temp_project / ".ralphy" / "test.pid"
+        pm = ProcessManager(temp_project, pid_file)
+
+        try:
+            pm.start(["true"])  # Command that returns 0
+            pm.wait()
+            assert pm.return_code == 0
+        finally:
+            pm.cleanup()
+
+
+class TestStreamReader:
+    """Tests for the StreamReader class."""
+
+    def test_read_lines_empty_process(self):
+        """Test read_lines handles None process."""
+        abort_event = threading.Event()
+        reader = StreamReader(
+            abort_event=abort_event,
+            json_parser=None,
+            circuit_breaker=None,
+            on_output=None,
+            on_cb_trigger=lambda: None,
+        )
+        # Should return empty list for None process
+        lines = reader.read_lines(None)
+        assert lines == []
+
+    def test_read_lines_basic_output(self):
+        """Test reading basic output without JSON parsing."""
+        abort_event = threading.Event()
+        output_received = []
+
+        reader = StreamReader(
+            abort_event=abort_event,
+            json_parser=None,
+            circuit_breaker=None,
+            on_output=lambda x: output_received.append(x),
+            on_cb_trigger=lambda: None,
+        )
+
+        # Create a mock process with output
+        mock_process = MagicMock()
+        mock_stdout = StringIO("line1\nline2\n")
+        mock_process.stdout = mock_stdout
+        mock_process.stdout.fileno = MagicMock(return_value=0)
+        mock_process.poll = MagicMock(return_value=0)
+
+        with patch("ralphy.claude.select.select", return_value=([0], [], [])):
+            lines = reader.read_lines(mock_process)
+
+        # Lines should contain the output
+        assert len(lines) >= 2 or "line1" in "".join(lines)
+
+    def test_abort_event_stops_reading(self):
+        """Test that setting abort event stops reading."""
+        abort_event = threading.Event()
+        reader = StreamReader(
+            abort_event=abort_event,
+            json_parser=None,
+            circuit_breaker=None,
+            on_output=None,
+            on_cb_trigger=lambda: None,
+        )
+
+        # Set abort before reading
+        abort_event.set()
+
+        mock_process = MagicMock()
+        mock_process.stdout = MagicMock()
+        mock_process.stdout.fileno = MagicMock(return_value=0)
+
+        lines = reader.read_lines(mock_process)
+        # Should return quickly with empty or partial results
+        assert isinstance(lines, list)
+
+    def test_circuit_breaker_callback_called(self):
+        """Test that circuit breaker callback is invoked on trigger."""
+        abort_event = threading.Event()
+        cb_triggered = []
+
+        def on_cb_trigger():
+            cb_triggered.append(True)
+
+        mock_cb = MagicMock()
+        mock_cb.record_output.return_value = True  # Simulate trigger
+
+        reader = StreamReader(
+            abort_event=abort_event,
+            json_parser=None,
+            circuit_breaker=mock_cb,
+            on_output=None,
+            on_cb_trigger=on_cb_trigger,
+        )
+
+        # Simulate processing a line that triggers CB
+        output_lines = []
+        reader._process_line("test line\n", output_lines)
+
+        assert len(cb_triggered) == 1
+        assert abort_event.is_set()
+
+    def test_json_parsing_integration(self):
+        """Test integration with JsonStreamParser."""
+        abort_event = threading.Event()
+        output_received = []
+
+        json_parser = JsonStreamParser()
+
+        reader = StreamReader(
+            abort_event=abort_event,
+            json_parser=json_parser,
+            circuit_breaker=None,
+            on_output=lambda x: output_received.append(x),
+            on_cb_trigger=lambda: None,
+        )
+
+        # Simulate processing a JSON assistant message
+        json_line = '{"type": "assistant", "message": {"content": [{"type": "text", "text": "Hello"}]}}\n'
+        output_lines = []
+        reader._process_line(json_line, output_lines)
+
+        assert len(output_lines) == 1
+        assert "Hello" in output_lines[0]
+        assert len(output_received) == 1

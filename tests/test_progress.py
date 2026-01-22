@@ -3,8 +3,18 @@
 from datetime import datetime
 
 import pytest
+from rich.panel import Panel
+from rich.progress import Progress
 
-from ralphy.progress import ActivityType, Activity, OutputParser, ProgressDisplay, ProgressState
+from ralphy.progress import (
+    Activity,
+    ActivityType,
+    OutputParser,
+    ProgressDisplay,
+    ProgressRenderer,
+    ProgressState,
+    RenderContext,
+)
 
 
 class TestActivityType:
@@ -234,43 +244,38 @@ class TestProgressStateNewFields:
 
 
 class TestTimeFormattingHelpers:
-    """Tests pour les fonctions de formatage du temps."""
+    """Tests for time formatting functions in ProgressRenderer."""
 
     def test_format_elapsed_seconds_only(self):
-        """Test formatage pour moins d'une minute."""
-        display = ProgressDisplay()
-        assert display._format_elapsed(45) == "00:45"
-        assert display._format_elapsed(0) == "00:00"
-        assert display._format_elapsed(59) == "00:59"
+        """Test formatting for less than a minute."""
+        assert ProgressRenderer.format_elapsed(45) == "00:45"
+        assert ProgressRenderer.format_elapsed(0) == "00:00"
+        assert ProgressRenderer.format_elapsed(59) == "00:59"
 
     def test_format_elapsed_minutes_and_seconds(self):
-        """Test formatage avec minutes et secondes."""
-        display = ProgressDisplay()
-        assert display._format_elapsed(65) == "01:05"
-        assert display._format_elapsed(130) == "02:10"
-        assert display._format_elapsed(3599) == "59:59"
+        """Test formatting with minutes and seconds."""
+        assert ProgressRenderer.format_elapsed(65) == "01:05"
+        assert ProgressRenderer.format_elapsed(130) == "02:10"
+        assert ProgressRenderer.format_elapsed(3599) == "59:59"
 
     def test_format_elapsed_hours(self):
-        """Test formatage avec heures."""
-        display = ProgressDisplay()
-        assert display._format_elapsed(3600) == "1h00m00s"
-        assert display._format_elapsed(3661) == "1h01m01s"
-        assert display._format_elapsed(7325) == "2h02m05s"
+        """Test formatting with hours."""
+        assert ProgressRenderer.format_elapsed(3600) == "1h00m00s"
+        assert ProgressRenderer.format_elapsed(3661) == "1h01m01s"
+        assert ProgressRenderer.format_elapsed(7325) == "2h02m05s"
 
     def test_format_timeout_minutes_only(self):
-        """Test formatage timeout en minutes."""
-        display = ProgressDisplay()
-        assert display._format_timeout(1800) == "30m"
-        assert display._format_timeout(600) == "10m"
-        assert display._format_timeout(60) == "1m"
+        """Test timeout formatting in minutes."""
+        assert ProgressRenderer.format_timeout(1800) == "30m"
+        assert ProgressRenderer.format_timeout(600) == "10m"
+        assert ProgressRenderer.format_timeout(60) == "1m"
 
     def test_format_timeout_hours(self):
-        """Test formatage timeout en heures."""
-        display = ProgressDisplay()
-        assert display._format_timeout(3600) == "1h00m"
-        assert display._format_timeout(7200) == "2h00m"
-        assert display._format_timeout(14400) == "4h00m"
-        assert display._format_timeout(5400) == "1h30m"
+        """Test timeout formatting in hours."""
+        assert ProgressRenderer.format_timeout(3600) == "1h00m"
+        assert ProgressRenderer.format_timeout(7200) == "2h00m"
+        assert ProgressRenderer.format_timeout(14400) == "4h00m"
+        assert ProgressRenderer.format_timeout(5400) == "1h30m"
 
 
 class TestProgressDisplayStart:
@@ -307,3 +312,170 @@ class TestProgressDisplayStart:
         assert display._state.phase_started_at is not None
 
         display.stop()
+
+
+class TestRenderContext:
+    """Tests for RenderContext dataclass."""
+
+    def test_render_context_creation(self):
+        """Test creating a RenderContext with all fields."""
+        state = ProgressState(phase_name="IMPLEMENTATION")
+        phase_progress = Progress()
+        tasks_progress = Progress()
+
+        context = RenderContext(
+            state=state,
+            phase_progress=phase_progress,
+            tasks_progress=tasks_progress,
+            phase_task_id=1,
+            tasks_task_id=2,
+        )
+
+        assert context.state is state
+        assert context.phase_progress is phase_progress
+        assert context.tasks_progress is tasks_progress
+        assert context.phase_task_id == 1
+        assert context.tasks_task_id == 2
+
+    def test_render_context_with_none_task_ids(self):
+        """Test RenderContext with None task IDs."""
+        state = ProgressState()
+        context = RenderContext(
+            state=state,
+            phase_progress=Progress(),
+            tasks_progress=Progress(),
+            phase_task_id=None,
+            tasks_task_id=None,
+        )
+
+        assert context.phase_task_id is None
+        assert context.tasks_task_id is None
+
+
+class TestProgressRenderer:
+    """Tests for ProgressRenderer class."""
+
+    def test_renderer_init(self):
+        """Test ProgressRenderer initialization."""
+        renderer = ProgressRenderer()
+        assert renderer.MAX_OUTPUT_LINES == 3
+
+    def test_render_returns_panel(self):
+        """Test that render returns a Rich Panel."""
+        renderer = ProgressRenderer()
+        state = ProgressState(phase_name="IMPLEMENTATION")
+        phase_progress = Progress()
+        phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=0)
+
+        context = RenderContext(
+            state=state,
+            phase_progress=phase_progress,
+            tasks_progress=Progress(),
+            phase_task_id=phase_task_id,
+            tasks_task_id=None,
+        )
+
+        result = renderer.render(context)
+        assert isinstance(result, Panel)
+
+    def test_render_includes_feature_name(self):
+        """Test that render includes feature name when set."""
+        renderer = ProgressRenderer()
+        state = ProgressState(
+            phase_name="IMPLEMENTATION",
+            feature_name="my-feature",
+        )
+        phase_progress = Progress()
+        phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=0)
+
+        context = RenderContext(
+            state=state,
+            phase_progress=phase_progress,
+            tasks_progress=Progress(),
+            phase_task_id=phase_task_id,
+            tasks_task_id=None,
+        )
+
+        # Render and verify no exceptions
+        result = renderer.render(context)
+        assert result is not None
+
+    def test_render_with_current_task(self):
+        """Test rendering with an active task."""
+        renderer = ProgressRenderer()
+        state = ProgressState(
+            phase_name="IMPLEMENTATION",
+            current_task_id="1.5",
+            current_task_name="Implement user model",
+        )
+        phase_progress = Progress()
+        phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=50)
+
+        context = RenderContext(
+            state=state,
+            phase_progress=phase_progress,
+            tasks_progress=Progress(),
+            phase_task_id=phase_task_id,
+            tasks_task_id=None,
+        )
+
+        result = renderer.render(context)
+        assert result is not None
+
+    def test_render_with_activity(self):
+        """Test rendering with current activity."""
+        renderer = ProgressRenderer()
+        activity = Activity(
+            type=ActivityType.WRITING_FILE,
+            description="Writing user.py",
+        )
+        state = ProgressState(
+            phase_name="IMPLEMENTATION",
+            current_activity=activity,
+        )
+        phase_progress = Progress()
+        phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=0)
+
+        context = RenderContext(
+            state=state,
+            phase_progress=phase_progress,
+            tasks_progress=Progress(),
+            phase_task_id=phase_task_id,
+            tasks_task_id=None,
+        )
+
+        result = renderer.render(context)
+        assert result is not None
+
+    def test_render_with_output_lines(self):
+        """Test rendering with output lines."""
+        renderer = ProgressRenderer()
+        state = ProgressState(
+            phase_name="IMPLEMENTATION",
+            last_output_lines=["Line 1", "Line 2", "A very long line that should be truncated" * 5],
+        )
+        phase_progress = Progress()
+        phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=0)
+
+        context = RenderContext(
+            state=state,
+            phase_progress=phase_progress,
+            tasks_progress=Progress(),
+            phase_task_id=phase_task_id,
+            tasks_task_id=None,
+        )
+
+        result = renderer.render(context)
+        assert result is not None
+
+    def test_format_elapsed_static_method(self):
+        """Test that format_elapsed works as static method."""
+        # Can be called without instance
+        result = ProgressRenderer.format_elapsed(3661)
+        assert result == "1h01m01s"
+
+    def test_format_timeout_static_method(self):
+        """Test that format_timeout works as static method."""
+        # Can be called without instance
+        result = ProgressRenderer.format_timeout(7200)
+        assert result == "2h00m"
