@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Ralphy is an AI-powered development automation tool that transforms a Product Requirements Document (PRD) into a mergeable Pull Request through an autonomous workflow with human validation at key stages. It orchestrates Claude Code CLI through multiple specialized agents to handle specification, implementation, quality assurance, and PR creation.
 
+## Development Principles
+
+See [DEVELOPMENT_PRINCIPLES.md](./DEVELOPMENT_PRINCIPLES.md) for the core software development principles (KISS, SRP, DRY, YAGNI, modularity, etc.) that guide how we write and organize code in this project.
+
 ## Development Commands
 
 ### Setup and Installation
