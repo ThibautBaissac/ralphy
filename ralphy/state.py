@@ -9,7 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Optional
 
-from ralphy.constants import FEATURE_NAME_PATTERN
+from ralphy.constants import validate_feature_name
 
 
 class Phase(str, Enum):
@@ -135,31 +135,6 @@ class StateManager:
     """Gestionnaire d'état du workflow."""
 
     @staticmethod
-    def _validate_feature_name(feature_name: str) -> None:
-        """Validate feature name to prevent path traversal attacks.
-
-        Args:
-            feature_name: The feature name to validate.
-
-        Raises:
-            ValueError: If the feature name contains invalid characters or patterns.
-        """
-        # Check for path traversal patterns
-        if ".." in feature_name:
-            raise ValueError(f"Invalid feature name: contains '..': {feature_name}")
-        if "/" in feature_name:
-            raise ValueError(f"Invalid feature name: contains '/': {feature_name}")
-        if "\\" in feature_name:
-            raise ValueError(f"Invalid feature name: contains '\\': {feature_name}")
-
-        # Check pattern - must start with alphanumeric, contain only alphanumeric, hyphens, underscores
-        if not FEATURE_NAME_PATTERN.match(feature_name):
-            raise ValueError(
-                f"Invalid feature name format: {feature_name}. "
-                "Must start with alphanumeric and contain only alphanumeric, hyphens, or underscores."
-            )
-
-    @staticmethod
     def _check_symlink_safety(path: Path, base_path: Path, description: str) -> None:
         """Check that a path is not a symlink pointing outside the project.
 
@@ -200,7 +175,7 @@ class StateManager:
 
         # Validate feature name to prevent path traversal attacks
         if feature_name is not None:
-            self._validate_feature_name(feature_name)
+            validate_feature_name(feature_name)
 
         # Verify it's a directory
         if not self.project_path.is_dir():

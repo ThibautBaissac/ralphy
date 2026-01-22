@@ -15,11 +15,11 @@ from ralphy.constants import (
     CB_TASK_STAGNATION_TIMEOUT_SECONDS,
     DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_RETRY_DELAY_SECONDS,
-    FEATURE_NAME_PATTERN,
     IMPL_TIMEOUT_SECONDS,
     PR_TIMEOUT_SECONDS,
     QA_TIMEOUT_SECONDS,
     SPEC_TIMEOUT_SECONDS,
+    validate_feature_name,
 )
 from ralphy.logger import get_logger
 
@@ -250,31 +250,6 @@ def ensure_ralph_dir(project_path: Path) -> Path:
     return ralph_dir
 
 
-def _validate_feature_name(feature_name: str) -> None:
-    """Validate feature name to prevent path traversal attacks.
-
-    Args:
-        feature_name: The feature name to validate.
-
-    Raises:
-        ValueError: If the feature name contains invalid characters or patterns.
-    """
-    # Check for path traversal patterns
-    if ".." in feature_name:
-        raise ValueError(f"Invalid feature name: contains '..': {feature_name}")
-    if "/" in feature_name:
-        raise ValueError(f"Invalid feature name: contains '/': {feature_name}")
-    if "\\" in feature_name:
-        raise ValueError(f"Invalid feature name: contains '\\': {feature_name}")
-
-    # Check pattern - must start with alphanumeric, contain only safe characters
-    if not FEATURE_NAME_PATTERN.match(feature_name):
-        raise ValueError(
-            f"Invalid feature name format: {feature_name}. "
-            "Must start with alphanumeric and contain only alphanumeric, hyphens, or underscores."
-        )
-
-
 def get_feature_dir(project_path: Path, feature_name: str) -> Path:
     """Returns the feature directory path: docs/features/<feature-name>/
 
@@ -288,7 +263,7 @@ def get_feature_dir(project_path: Path, feature_name: str) -> Path:
     Raises:
         ValueError: If feature_name contains invalid characters or path traversal attempts.
     """
-    _validate_feature_name(feature_name)
+    validate_feature_name(feature_name)
     return project_path / "docs" / "features" / feature_name
 
 

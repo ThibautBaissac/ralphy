@@ -487,9 +487,11 @@ class Orchestrator:
         agent_class: Type[BaseAgent],
         timeout: int,
         model: str,
+        total_tasks: int = 0,
         agent_kwargs: Optional[dict[str, Any]] = None,
         run_kwargs: Optional[dict[str, Any]] = None,
         post_run: Optional[Callable[[AgentResult, BaseAgent], None]] = None,
+        pre_start: Optional[Callable[[], None]] = None,
     ) -> bool:
         """Generic method to run an agent phase.
 
@@ -502,89 +504,11 @@ class Orchestrator:
             agent_class: The agent class to instantiate.
             timeout: Timeout in seconds for agent execution.
             model: Model to use for the agent.
-            agent_kwargs: Additional kwargs for agent constructor.
-            run_kwargs: Additional kwargs for agent.run().
-            post_run: Optional callback after successful run (receives result and agent).
-
-        Returns:
-            True if phase completed successfully, False otherwise.
-        """
-        self.logger.phase(phase_name)
-        self._safe_transition(phase)
-
-        self._start_phase_progress(
-            phase_name,
-            model=model,
-            timeout=timeout,
-        )
-
-        phase_outcome = "unknown"
-        try:
-            # Build agent with common + custom kwargs
-            kwargs: dict[str, Any] = {
-                "project_path": self.project_path,
-                "config": self.config,
-                "on_output": self.on_output,
-                "model": model,
-                "feature_dir": self.feature_dir,
-                "on_token_update": self._on_token_update,
-            }
-            if agent_kwargs:
-                kwargs.update(agent_kwargs)
-
-            agent = agent_class(**kwargs)
-
-            # Run agent with timeout + custom kwargs
-            run_args: dict[str, Any] = {"timeout": timeout}
-            if run_kwargs:
-                run_args.update(run_kwargs)
-
-            result = agent.run(**run_args)
-
-            if not result.success:
-                self.state_manager.set_failed(result.error_message)
-                phase_outcome = "failed"
-                return False
-
-            # Optional post-run callback
-            if post_run:
-                post_run(result, agent)
-
-            phase_outcome = "success"
-            return True
-        finally:
-            self._stop_phase_progress(outcome=phase_outcome)
-
-    def _run_agent_phase_extended(
-        self,
-        phase: Phase,
-        phase_name: str,
-        agent_class: Type[BaseAgent],
-        timeout: int,
-        model: str,
-        total_tasks: int = 0,
-        agent_kwargs: Optional[dict[str, Any]] = None,
-        run_kwargs: Optional[dict[str, Any]] = None,
-        post_run: Optional[Callable[[AgentResult, BaseAgent], None]] = None,
-        pre_start: Optional[Callable[[], None]] = None,
-    ) -> bool:
-        """Extended agent phase runner with task count and pre-start hook.
-
-        Same as _run_agent_phase but with additional support for:
-        - total_tasks: Number of tasks to display in progress bar
-        - pre_start: Callback after progress display starts, before agent runs
-
-        Args:
-            phase: The workflow phase to transition to.
-            phase_name: Display name for logging and progress.
-            agent_class: The agent class to instantiate.
-            timeout: Timeout in seconds for agent execution.
-            model: Model to use for the agent.
             total_tasks: Number of tasks for progress display (0 = no task bar).
             agent_kwargs: Additional kwargs for agent constructor.
             run_kwargs: Additional kwargs for agent.run().
             post_run: Optional callback after successful run (receives result and agent).
-            pre_start: Optional callback after progress display starts.
+            pre_start: Optional callback after progress display starts, before agent runs.
 
         Returns:
             True if phase completed successfully, False otherwise.
@@ -720,8 +644,7 @@ class Orchestrator:
             completed, total = dev_agent.count_task_status()
             self.state_manager.update_tasks(completed, total)
 
-        # Use extended _run_agent_phase with implementation-specific params
-        return self._run_agent_phase_extended(
+        return self._run_agent_phase(
             phase=Phase.IMPLEMENTATION,
             phase_name="IMPLEMENTATION",
             agent_class=DevAgent,

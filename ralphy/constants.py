@@ -14,6 +14,31 @@ import re
 # contain only alphanumeric, hyphens, underscores
 FEATURE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
+
+def validate_feature_name(feature_name: str) -> None:
+    """Validate feature name to prevent path traversal attacks.
+
+    Args:
+        feature_name: The feature name to validate.
+
+    Raises:
+        ValueError: If the feature name contains invalid characters or patterns.
+    """
+    # Check for path traversal patterns
+    if ".." in feature_name:
+        raise ValueError(f"Invalid feature name: contains '..': {feature_name}")
+    if "/" in feature_name:
+        raise ValueError(f"Invalid feature name: contains '/': {feature_name}")
+    if "\\" in feature_name:
+        raise ValueError(f"Invalid feature name: contains '\\': {feature_name}")
+
+    # Check pattern - must start with alphanumeric, contain only safe characters
+    if not FEATURE_NAME_PATTERN.match(feature_name):
+        raise ValueError(
+            f"Invalid feature name format: {feature_name}. "
+            "Must start with alphanumeric and contain only alphanumeric, hyphens, or underscores."
+        )
+
 # =============================================================================
 # TIMEOUT DEFAULTS (seconds)
 # =============================================================================
