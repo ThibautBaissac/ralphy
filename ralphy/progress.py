@@ -322,8 +322,7 @@ class ProgressRenderer:
         if state.last_output_lines:
             output_text = Text()
             for line in state.last_output_lines[-self.MAX_OUTPUT_LINES:]:
-                # Truncates long lines
-                display_line = line[:70] + "..." if len(line) > 70 else line
+                display_line = line
                 output_text.append("  > ", style="dim")
                 output_text.append(display_line + "\n", style="dim")
             elements.append(output_text)
