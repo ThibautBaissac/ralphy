@@ -544,3 +544,61 @@ class TestPlaceholderReplacement:
 
         assert "TestProject:" in result
         assert "{{optional}}" not in result
+
+
+class TestTDDInstructions:
+    """Tests for TDD instructions placeholder."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Creates a temporary project."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_tdd_instructions_disabled_by_default(self, temp_project):
+        """Test that TDD instructions are empty when disabled."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        instructions = agent._get_tdd_instructions()
+        assert instructions == ""
+
+    def test_tdd_instructions_enabled(self, temp_project):
+        """Test that TDD instructions are returned when enabled."""
+        config = ProjectConfig(
+            stack=StackConfig(tdd_enabled=True)
+        )
+        agent = ConcreteAgent(temp_project, config)
+
+        instructions = agent._get_tdd_instructions()
+        assert "TDD Workflow" in instructions
+        assert "RED" in instructions
+        assert "GREEN" in instructions
+        assert "REFACTOR" in instructions
+        assert "Write Failing Tests First" in instructions
+
+    def test_tdd_placeholder_replacement_disabled(self, temp_project):
+        """Test that {{tdd_instructions}} is replaced with empty string when disabled."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        template = "Before {{tdd_instructions}}After"
+        result = agent._apply_common_placeholders(template)
+
+        assert result == "Before After"
+        assert "{{tdd_instructions}}" not in result
+
+    def test_tdd_placeholder_replacement_enabled(self, temp_project):
+        """Test that {{tdd_instructions}} is replaced with TDD content when enabled."""
+        config = ProjectConfig(
+            stack=StackConfig(tdd_enabled=True)
+        )
+        agent = ConcreteAgent(temp_project, config)
+
+        template = "Before\n{{tdd_instructions}}\nAfter"
+        result = agent._apply_common_placeholders(template)
+
+        assert "TDD Workflow" in result
+        assert "{{tdd_instructions}}" not in result
+        assert "Before" in result
+        assert "After" in result

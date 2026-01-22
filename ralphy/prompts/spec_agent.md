@@ -140,18 +140,21 @@ Expected structure:
 - **Status**: pending
 - **Description**: Create model with validations and associations
 - **Files**: `app/models/x.rb`, `spec/models/x_spec.rb`, `spec/factories/x.rb`
+- **Test Requirements**: Validations (presence, uniqueness), associations, scopes
 - **Validation Criteria**: Specs pass
 
 ## Task 3: [Policy - Create policy X]
 - **Status**: pending
 - **Description**: Create Pundit policy for X
 - **Files**: `app/policies/x_policy.rb`, `spec/policies/x_policy_spec.rb`
+- **Test Requirements**: Authorization rules for each action (index?, show?, create?, update?, destroy?)
 - **Validation Criteria**: Specs pass
 
 ## Task 4: [Controller - Create controller X]
 - **Status**: pending
 - **Description**: Create controller with REST actions
 - **Files**: `app/controllers/x_controller.rb`, `spec/requests/x_spec.rb`
+- **Test Requirements**: HTTP status codes, authorization, response body for each action
 - **Validation Criteria**: Specs pass
 
 ## Task 5: [Views - Create views X]
@@ -183,6 +186,7 @@ IMPORTANT: SPEC.md and TASKS.md files must be created in the `{{feature_path}}/`
    - **Jobs** (if async tasks necessary)
 4. Each task must be atomic and testable
 5. Tasks must follow dependency order
+6. Each task MUST include **Test Requirements** describing what tests to write
 
 ## Exit Signal (MANDATORY)
 

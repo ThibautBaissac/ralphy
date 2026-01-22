@@ -118,6 +118,7 @@ class StackConfig:
 
     language: str = "typescript"
     test_command: str = "npm test"
+    tdd_enabled: bool = False
 
 
 @dataclass
@@ -159,6 +160,7 @@ class ProjectConfig:
         stack = StackConfig(
             language=stack_data.get("language", "typescript"),
             test_command=stack_data.get("test_command", "npm test"),
+            tdd_enabled=stack_data.get("tdd_enabled", False),
         )
 
         retry = RetryConfig(
@@ -204,6 +206,7 @@ class ProjectConfig:
             "stack": {
                 "language": self.stack.language,
                 "test_command": self.stack.test_command,
+                "tdd_enabled": self.stack.tdd_enabled,
             },
             "retry": {
                 "max_attempts": self.retry.max_attempts,

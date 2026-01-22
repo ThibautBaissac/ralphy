@@ -150,6 +150,7 @@ class BaseAgent(ABC):
         else:
             feature_path = ""
         result = result.replace("{{feature_path}}", feature_path)
+        result = result.replace("{{tdd_instructions}}", self._get_tdd_instructions())
         return result
 
     def _apply_placeholders(self, template: str, **kwargs: str) -> str:
@@ -191,6 +192,40 @@ class BaseAgent(ABC):
             self.logger.warn("Custom prompt missing EXIT_SIGNAL instruction")
             return False
         return True
+
+    def _get_tdd_instructions(self) -> str:
+        """Return TDD workflow instructions if enabled, empty string otherwise."""
+        if not self.config.stack.tdd_enabled:
+            return ""
+
+        return """
+## TDD Workflow (MANDATORY)
+
+For each task, follow the RED → GREEN → REFACTOR cycle:
+
+### 1. RED: Write Failing Tests First
+- Create/update test file BEFORE writing implementation code
+- Write tests that define the expected behavior
+- Run tests with the test command - verify they FAIL
+- This confirms tests are actually testing something
+
+### 2. GREEN: Implement Minimal Code
+- Write the minimum code needed to make tests pass
+- Do not add extra features or optimizations yet
+- Run tests - verify they PASS
+
+### 3. REFACTOR: Improve Code Quality
+- Clean up code while keeping tests green
+- Remove duplication, improve naming, simplify logic
+- Run tests after each refactor to ensure they still pass
+- Run linter/formatter as appropriate
+
+### TDD Rules
+- NEVER write implementation code before its test exists
+- NEVER skip the "verify tests fail" step - it catches false positives
+- Keep the RED-GREEN cycle short (minutes, not hours)
+- One test at a time: write one test, make it pass, repeat
+"""
 
     def read_file(self, filename: str) -> Optional[str]:
         """Reads a file from the project."""

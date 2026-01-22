@@ -43,7 +43,7 @@ For each task with `pending` status:
 6. **Check style** with `rubocop -A` (auto-correct)
 7. **Mark `completed`**: Change status from `in_progress` to `completed` in {{feature_path}}/TASKS.md
 8. **Repeat** for the next task
-
+{{tdd_instructions}}
 ⚠️ **CRITICAL - TASKS.MD UPDATE MANDATORY**:
 - You MUST use the Edit tool to modify {{feature_path}}/TASKS.md TWICE per task:
   - BEFORE coding: `pending` → `in_progress`
