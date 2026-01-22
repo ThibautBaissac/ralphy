@@ -1,6 +1,7 @@
 ---
 description: Review codebase against development principles (KISS, SRP, DRY, YAGNI, etc.)
 argument-hint: [file-or-directory]
+allowed-tools: Read, Glob, Search
 ---
 
 # Development Principles Review
