@@ -200,6 +200,7 @@ models:
 stack:
   language: typescript     # Primary language/framework
   test_command: npm test   # Command to run tests
+  tdd_enabled: true        # Enable TDD mode (run tests after each task)
 
 # -----------------------------------------------------------------------------
 # Timeouts (seconds)
