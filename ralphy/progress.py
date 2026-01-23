@@ -734,17 +734,17 @@ class ProgressDisplay:
         )
 
     def _refresh(self) -> None:
-        """Refreshes the display.
+        """Request display refresh (handled by Rich Live auto-refresh).
+
+        This is a no-op. Rich Live automatically refreshes at 4/sec by
+        calling __rich__(). State changes will be picked up on the next
+        refresh cycle (max 250ms latency).
+
+        Method retained for API compatibility with existing callers.
 
         Note: This method expects the caller to hold self._lock.
-        It performs a defensive check to avoid race conditions
-        with stop() which may set _live to None.
         """
-        # Capture local reference to avoid race with stop()
-        live = self._live
-        if live and self._active:
-            context = self._build_render_context()
-            live.update(self._renderer.render(context))
+        pass
 
     def __rich__(self) -> Panel:
         """Make ProgressDisplay a Rich renderable.
