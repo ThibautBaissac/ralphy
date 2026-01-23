@@ -151,6 +151,9 @@ class Orchestrator:
                 self.state_manager.checkpoint_task(task_id, "completed")
                 completed, total = self._dev_agent_for_queries.count_task_status()
                 self.state_manager.update_tasks(completed, total)
+                # Sync progress display with authoritative file-based count
+                if self._progress_display and self._progress_display.is_active:
+                    self._progress_display.update_tasks(completed, total)
             # Log to journal
             self._journal.record_task_event(event_type, task_id, task_name)
 

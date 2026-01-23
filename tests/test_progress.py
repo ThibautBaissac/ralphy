@@ -176,14 +176,27 @@ class TestProgressDisplay:
 
         display.stop()
 
-    def test_process_output_increments_tasks_on_completion(self):
-        """Test that tasks are incremented when one completes."""
-        display = ProgressDisplay()
+    def test_process_output_fires_callback_on_completion(self):
+        """Test that task completion triggers callback (orchestrator handles counter)."""
+        callback_events = []
+
+        def on_task_event(event_type, task_id, task_name):
+            callback_events.append((event_type, task_id, task_name))
+
+        display = ProgressDisplay(on_task_event=on_task_event)
         display.start("IMPLEMENTATION", 10)
 
-        initial_completed = display._state.tasks_completed
         display.process_output("**Status**: completed")
-        assert display._state.tasks_completed == initial_completed + 1
+        # Callback should be fired (orchestrator will update counter via update_tasks)
+        assert len(callback_events) == 1
+        assert callback_events[0][0] == "complete"
+
+        # Counter is NOT incremented locally - orchestrator handles this
+        assert display._state.tasks_completed == 0
+
+        # Orchestrator would call update_tasks with authoritative count
+        display.update_tasks(1, 10)
+        assert display._state.tasks_completed == 1
 
         display.stop()
 

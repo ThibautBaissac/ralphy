@@ -508,26 +508,12 @@ class ProgressDisplay:
                             self._state.current_task_name,
                         )
 
-                # Counts completed tasks
+                # Task completion detected - delegate to orchestrator callback
+                # The orchestrator reads the authoritative count from TASKS.md
+                # and calls update_tasks() to sync the display
                 elif activity.type == ActivityType.TASK_COMPLETE:
-                    self._state.tasks_completed += 1
                     completed_task_id = activity.detail or self._state.current_task_id
-                    if self._tasks_task_id is not None:
-                        self._tasks_progress.update(
-                            self._tasks_task_id,
-                            completed=self._state.tasks_completed,
-                        )
-                    # Update phase progress
-                    if self._state.tasks_total > 0:
-                        self._state.phase_progress = (
-                            self._state.tasks_completed / self._state.tasks_total
-                        ) * 100
-                        if self._phase_task_id is not None:
-                            self._phase_progress.update(
-                                self._phase_task_id,
-                                completed=self._state.phase_progress,
-                            )
-                    # Callback for logging
+                    # Callback for logging and state update
                     if self._on_task_event:
                         self._on_task_event(
                             "complete",
