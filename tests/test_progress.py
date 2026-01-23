@@ -14,6 +14,8 @@ from ralphy.progress import (
     ProgressRenderer,
     ProgressState,
     RenderContext,
+    match_agent_name,
+    normalize_agent_name,
 )
 
 
@@ -647,3 +649,243 @@ class TestProgressRenderer:
         # Can be called without instance
         result = ProgressRenderer.format_timeout(7200)
         assert result == "2h00m"
+
+
+class TestNormalizeAgentName:
+    """Tests for normalize_agent_name function."""
+
+    def test_normalize_lowercase_with_hyphen(self):
+        """Test normalizing already correct format."""
+        assert normalize_agent_name("backend-agent") == "backend-agent"
+
+    def test_normalize_uppercase_to_lowercase(self):
+        """Test that uppercase is converted to lowercase."""
+        assert normalize_agent_name("TDD-agent") == "tdd-agent"
+        assert normalize_agent_name("BACKEND-AGENT") == "backend-agent"
+
+    def test_normalize_spaces_to_hyphens(self):
+        """Test that spaces are converted to hyphens."""
+        assert normalize_agent_name("TDD red agent") == "tdd-red-agent"
+        assert normalize_agent_name("my cool agent") == "my-cool-agent"
+
+    def test_normalize_underscores_to_hyphens(self):
+        """Test that underscores are converted to hyphens."""
+        assert normalize_agent_name("backend_agent") == "backend-agent"
+        assert normalize_agent_name("tdd_red_agent") == "tdd-red-agent"
+
+    def test_normalize_adds_agent_suffix(self):
+        """Test that -agent suffix is added when missing."""
+        assert normalize_agent_name("backend") == "backend-agent"
+        assert normalize_agent_name("tdd-red") == "tdd-red-agent"
+        assert normalize_agent_name("TDD") == "tdd-agent"
+
+    def test_normalize_handles_agent_without_hyphen(self):
+        """Test normalizing 'backendagent' to 'backend-agent'."""
+        assert normalize_agent_name("backendagent") == "backend-agent"
+        assert normalize_agent_name("tddredagent") == "tddred-agent"
+
+    def test_normalize_removes_duplicate_hyphens(self):
+        """Test that duplicate hyphens are collapsed."""
+        assert normalize_agent_name("tdd--red--agent") == "tdd-red-agent"
+        assert normalize_agent_name("backend---agent") == "backend-agent"
+
+    def test_normalize_strips_leading_trailing(self):
+        """Test that leading/trailing whitespace and hyphens are removed."""
+        assert normalize_agent_name("  backend-agent  ") == "backend-agent"
+        assert normalize_agent_name("-backend-agent-") == "backend-agent"
+
+    def test_normalize_empty_string(self):
+        """Test that empty string returns empty."""
+        assert normalize_agent_name("") == ""
+        assert normalize_agent_name("  ") == ""
+
+    def test_normalize_mixed_case_with_spaces(self):
+        """Test real-world example: 'TDD red agent'."""
+        assert normalize_agent_name("TDD red agent") == "tdd-red-agent"
+        assert normalize_agent_name("Model Agent") == "model-agent"
+
+
+class TestMatchAgentName:
+    """Tests for match_agent_name function."""
+
+    def test_exact_match(self):
+        """Test exact match in available agents."""
+        available = ["backend-agent", "frontend-agent", "tdd-red-agent"]
+        assert match_agent_name("backend-agent", available) == "backend-agent"
+        assert match_agent_name("tdd-red-agent", available) == "tdd-red-agent"
+
+    def test_normalized_match(self):
+        """Test matching after normalizing available agents."""
+        available = ["Backend", "Frontend", "TDD-Red"]
+        assert match_agent_name("backend-agent", available) == "Backend"
+        assert match_agent_name("tdd-red-agent", available) == "TDD-Red"
+
+    def test_prefix_match(self):
+        """Test prefix matching for partial names."""
+        available = ["backend-agent", "frontend-agent"]
+        # base name "backend" matches "backend-agent"
+        assert match_agent_name("backend-agent", available) == "backend-agent"
+
+    def test_no_match_returns_none(self):
+        """Test that non-matching agent returns None."""
+        available = ["backend-agent", "frontend-agent"]
+        assert match_agent_name("nonexistent-agent", available) is None
+
+    def test_empty_available_list(self):
+        """Test with empty available agents list."""
+        assert match_agent_name("backend-agent", []) is None
+
+    def test_empty_name(self):
+        """Test with empty name."""
+        available = ["backend-agent"]
+        assert match_agent_name("", available) is None
+
+    def test_match_preserves_original_casing(self):
+        """Test that matched result preserves original casing from available list."""
+        available = ["TDD-Red-Agent", "Backend-Agent"]
+        result = match_agent_name("tdd-red-agent", available)
+        assert result == "TDD-Red-Agent"
+
+
+class TestAgentDelegationPatterns:
+    """Tests for improved AGENT_DELEGATION pattern detection."""
+
+    def test_detect_delegation_with_spaces(self):
+        """Test detection of 'TDD red agent' (with spaces)."""
+        parser = OutputParser()
+        activity = parser.parse("let me use the TDD red agent to write tests")
+        assert activity is not None
+        assert activity.type == ActivityType.AGENT_DELEGATION
+        # Detail should capture "TDD red agent"
+        assert "TDD" in activity.detail or "tdd" in activity.detail.lower()
+
+    def test_detect_delegation_case_insensitive(self):
+        """Test case-insensitive matching."""
+        parser = OutputParser()
+        activity = parser.parse("I'll use the BACKEND-AGENT")
+        assert activity is not None
+        assert activity.type == ActivityType.AGENT_DELEGATION
+        assert activity.detail is not None
+
+    def test_detect_delegation_with_delegate_keyword(self):
+        """Test 'delegate to' pattern."""
+        parser = OutputParser()
+        activity = parser.parse("I'll delegate this to the model-agent")
+        assert activity is not None
+        assert activity.type == ActivityType.AGENT_DELEGATION
+
+    def test_detect_delegation_invoke(self):
+        """Test 'invoke' pattern."""
+        parser = OutputParser()
+        activity = parser.parse("invoking the backend agent")
+        assert activity is not None
+        assert activity.type == ActivityType.AGENT_DELEGATION
+
+    def test_detect_subagent_type_json(self):
+        """Test JSON stream subagent_type pattern."""
+        parser = OutputParser()
+        activity = parser.parse('{"subagent_type": "tdd-red"}')
+        assert activity is not None
+        assert activity.type == ActivityType.AGENT_DELEGATION
+        assert "tdd-red" in activity.detail
+
+    def test_detect_let_me_use_pattern(self):
+        """Test 'let me use' pattern."""
+        parser = OutputParser()
+        activity = parser.parse("let me use the backend-agent to handle this")
+        assert activity is not None
+        assert activity.type == ActivityType.AGENT_DELEGATION
+
+    def test_no_false_positive_for_random_text(self):
+        """Test that random text doesn't trigger false positive."""
+        parser = OutputParser()
+        activity = parser.parse("I'm working on the user interface")
+        # Should be THINKING or None, not AGENT_DELEGATION
+        if activity:
+            assert activity.type != ActivityType.AGENT_DELEGATION
+
+
+class TestProgressDisplayAgentDelegation:
+    """Tests for agent delegation handling in ProgressDisplay."""
+
+    def test_delegation_updates_agent_name(self):
+        """Test that delegation updates the displayed agent name."""
+        display = ProgressDisplay()
+        display.start(
+            "IMPLEMENTATION",
+            agent_name="dev-agent",
+            available_agents=["backend-agent", "frontend-agent", "tdd-red-agent"],
+        )
+
+        # Simulate delegation detection
+        display.process_output("let me use the backend-agent")
+
+        assert display._state.agent_name == "backend-agent"
+        assert display._state.delegated_from == "dev-agent"
+        display.stop()
+
+    def test_delegation_with_normalized_name(self):
+        """Test delegation with name that needs normalization."""
+        display = ProgressDisplay()
+        display.start(
+            "IMPLEMENTATION",
+            agent_name="dev-agent",
+            available_agents=["tdd-red-agent"],
+        )
+
+        # Use name with spaces that needs normalization
+        display.process_output("let me use the TDD red agent")
+
+        assert display._state.agent_name == "tdd-red-agent"
+        display.stop()
+
+    def test_delegation_resets_on_task_complete(self):
+        """Test that delegation resets when task completes."""
+        display = ProgressDisplay()
+        display.start(
+            "IMPLEMENTATION",
+            agent_name="dev-agent",
+            available_agents=["backend-agent"],
+        )
+
+        # Delegate
+        display.process_output("let me use the backend-agent")
+        assert display._state.agent_name == "backend-agent"
+
+        # Complete task - should reset
+        display.process_output("**Status**: completed")
+        assert display._state.agent_name == "dev-agent"
+        assert display._state.delegated_from is None
+        display.stop()
+
+    def test_delegation_ignored_when_not_in_available_list(self):
+        """Test that unknown agents don't update display."""
+        display = ProgressDisplay()
+        display.start(
+            "IMPLEMENTATION",
+            agent_name="dev-agent",
+            available_agents=["backend-agent"],  # Only backend available
+        )
+
+        # Try to delegate to unknown agent
+        display.process_output("let me use the mystery-agent")
+
+        # Should not update
+        assert display._state.agent_name == "dev-agent"
+        assert display._state.delegated_from is None
+        display.stop()
+
+    def test_delegation_allowed_when_no_available_list(self):
+        """Test that delegation works when available_agents is empty."""
+        display = ProgressDisplay()
+        display.start(
+            "IMPLEMENTATION",
+            agent_name="dev-agent",
+            available_agents=[],  # No available list
+        )
+
+        # Delegate - should work since no restriction
+        display.process_output("let me use the backend-agent")
+
+        assert display._state.agent_name == "backend-agent"
+        display.stop()

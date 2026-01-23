@@ -94,15 +94,91 @@ ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
         r"Checking",
     ],
     ActivityType.AGENT_DELEGATION: [
-        # Matches: "delegate to model-agent", "delegating this to the tdd-orchestrator-agent"
-        # MUST have "to" before agent name - captures agent name with -agent suffix required
-        r"(?:delegate|delegating)\s+(?:\w+\s+)*?to\s+(?:the\s+)?([a-z0-9_-]+-agent)",
-        # Matches: "I'll use the model-agent", "using tdd-orchestrator-agent"
-        r"(?:use|using|invoke|invoking)\s+(?:the\s+)?([a-z0-9_-]+-agent)",
+        # Matches: "delegate to model-agent", "delegating this to the TDD red agent"
+        # MUST have "to" before agent name - captures agent name (case-insensitive, allows spaces)
+        r"(?:delegate|delegating)\s+(?:\w+\s+)*?to\s+(?:the\s+)?([a-zA-Z0-9][a-zA-Z0-9_ -]*(?:agent)?)",
+        # Matches: "I'll use the model-agent", "using TDD red agent", "let me use the backend-agent"
+        r"(?:let\s+me\s+)?(?:use|using|invoke|invoking)\s+(?:the\s+)?([a-zA-Z0-9][a-zA-Z0-9_ -]*(?:agent)?)",
         # Matches Task tool subagent_type in JSON stream output
-        r'"subagent_type":\s*"([a-z0-9_-]+)"',
+        r'"subagent_type":\s*"([a-zA-Z0-9_-]+)"',
     ],
 }
+
+
+def normalize_agent_name(raw_name: str) -> str:
+    """Normalize agent name to canonical hyphenated lowercase form.
+
+    Converts various formats to a consistent agent name:
+    - "TDD red agent" -> "tdd-red-agent"
+    - "backend_agent" -> "backend-agent"
+    - "model" -> "model-agent"
+    - "TDD-red" -> "tdd-red-agent"
+
+    Args:
+        raw_name: Raw agent name captured from output
+
+    Returns:
+        Normalized agent name in lowercase with hyphens and -agent suffix
+    """
+    if not raw_name:
+        return ""
+
+    # Lowercase and strip
+    name = raw_name.strip().lower()
+
+    # Replace underscores and spaces with hyphens
+    name = re.sub(r"[_\s]+", "-", name)
+
+    # Remove duplicate hyphens
+    name = re.sub(r"-+", "-", name)
+
+    # Strip leading/trailing hyphens
+    name = name.strip("-")
+
+    # Ensure -agent suffix
+    if not name.endswith("-agent"):
+        # Handle case where name ends with just "agent" (no hyphen)
+        if name.endswith("agent") and len(name) > 5:
+            name = name[:-5].rstrip("-") + "-agent"
+        elif name:
+            name = f"{name}-agent"
+
+    return name
+
+
+def match_agent_name(normalized_name: str, available_agents: list[str]) -> Optional[str]:
+    """Match normalized agent name against available agents list.
+
+    Attempts exact match first, then tries normalizing available agents,
+    then prefix matching for partial names.
+
+    Args:
+        normalized_name: Normalized agent name to match
+        available_agents: List of available agent names
+
+    Returns:
+        Matched agent name from available_agents, or None if no match
+    """
+    if not normalized_name or not available_agents:
+        return None
+
+    # Exact match
+    if normalized_name in available_agents:
+        return normalized_name
+
+    # Normalize available agents for comparison
+    normalized_available = {normalize_agent_name(a): a for a in available_agents}
+    if normalized_name in normalized_available:
+        return normalized_available[normalized_name]
+
+    # Prefix match (e.g., "tdd-red-agent" matches "tdd-red")
+    base_name = normalized_name.replace("-agent", "")
+    for avail_normalized, avail_original in normalized_available.items():
+        avail_base = avail_normalized.replace("-agent", "")
+        if base_name == avail_base:
+            return avail_original
+
+    return None
 
 
 class OutputParser:
@@ -656,23 +732,24 @@ class ProgressDisplay:
                 # Agent delegation detected - update current agent display
                 elif activity.type == ActivityType.AGENT_DELEGATION:
                     if activity.detail:
-                        # Normalize agent name (e.g., "model" -> "model-agent")
-                        new_agent = activity.detail.lower().strip()
-                        if not new_agent.endswith("-agent"):
-                            new_agent = f"{new_agent}-agent"
+                        # Normalize agent name (e.g., "TDD red agent" -> "tdd-red-agent")
+                        new_agent = normalize_agent_name(activity.detail)
 
-                        # Only update if different from current and agent is available
-                        if new_agent != self._state.agent_name:
-                            # Check if new agent matches one in available_agents list
-                            is_known_agent = new_agent in self._state.available_agents or any(
-                                a.lower() == new_agent or a.lower().startswith(new_agent.replace("-agent", ""))
-                                for a in self._state.available_agents
+                        # Only update if different from current
+                        if new_agent and new_agent != self._state.agent_name:
+                            # Try to match against available_agents list
+                            matched_agent = match_agent_name(
+                                new_agent, self._state.available_agents
                             )
-                            if is_known_agent:
+                            # Use matched agent or the normalized name if no available list
+                            final_agent = matched_agent or (
+                                new_agent if not self._state.available_agents else None
+                            )
+                            if final_agent:
                                 # Store original agent for later reset
                                 if not self._state.delegated_from:
                                     self._state.delegated_from = self._state.agent_name
-                                self._state.agent_name = new_agent
+                                self._state.agent_name = final_agent
 
             # Keeps last output lines
             lines = text.strip().split("\n")

@@ -18,7 +18,7 @@ from ralphy.constants import (
 )
 from ralphy.journal import WorkflowJournal
 from ralphy.logger import get_logger
-from ralphy.progress import Activity, ProgressDisplay
+from ralphy.progress import Activity, ActivityType, ProgressDisplay
 from ralphy.state import PHASE_ORDER, Phase, StateManager
 from ralphy.validation import HumanValidator
 
@@ -155,7 +155,24 @@ class Orchestrator:
 
     def _on_activity(self, activity: Activity) -> None:
         """Callback appelé lors de la détection d'une activité."""
-        self._journal.record_activity(activity)
+        # Handle AGENT_DELEGATION with dedicated event type
+        if activity.type == ActivityType.AGENT_DELEGATION:
+            # Get current agent from progress display state
+            from_agent = ""
+            to_agent = activity.detail or ""
+            if self._progress_display:
+                from_agent = (
+                    self._progress_display._state.delegated_from
+                    or self._progress_display._state.agent_name
+                    or ""
+                )
+            # Record with task context if available
+            task_id = None
+            if self._progress_display and self._progress_display._state.current_task_id:
+                task_id = self._progress_display._state.current_task_id
+            self._journal.record_agent_delegation(from_agent, to_agent, task_id)
+        else:
+            self._journal.record_activity(activity)
 
     def _on_token_update(self, usage: TokenUsage, cost: float) -> None:
         """Callback appelé lors de la mise à jour des tokens."""

@@ -849,3 +849,226 @@ class TestCreateEventHelper:
 
         assert event.phase is None
         assert event.data["outcome"] == "completed"
+
+
+class TestAgentDelegationJournal:
+    """Tests for agent delegation tracking in the journal."""
+
+    @pytest.fixture
+    def temp_feature_dir(self, tmp_path):
+        """Create a temporary feature directory."""
+        feature_dir = tmp_path / "docs" / "features" / "test-feature"
+        feature_dir.mkdir(parents=True)
+        return feature_dir
+
+    @pytest.fixture
+    def journal(self, temp_feature_dir):
+        """Create a journal instance for testing."""
+        return WorkflowJournal(temp_feature_dir, "test-feature")
+
+    def test_event_type_includes_agent_delegation(self):
+        """Test that AGENT_DELEGATION is in EventType enum."""
+        assert EventType.AGENT_DELEGATION.value == "agent_delegation"
+
+    def test_record_agent_delegation(self, journal, temp_feature_dir):
+        """Test recording an agent delegation event."""
+        journal.start_workflow()
+        journal.start_phase("IMPLEMENTATION")
+        journal.record_agent_delegation(
+            from_agent="dev-agent",
+            to_agent="tdd-red-agent",
+            task_id="1.5",
+        )
+
+        jsonl_path = temp_feature_dir / ".ralphy" / "progress.jsonl"
+        with open(jsonl_path) as f:
+            lines = f.readlines()
+            delegation_event = json.loads(lines[-1])
+            assert delegation_event["event_type"] == "agent_delegation"
+            assert delegation_event["data"]["from_agent"] == "dev-agent"
+            assert delegation_event["data"]["to_agent"] == "tdd-red-agent"
+            assert delegation_event["data"]["task_id"] == "1.5"
+
+    def test_record_agent_delegation_without_task_id(self, journal, temp_feature_dir):
+        """Test recording delegation without task_id."""
+        journal.start_workflow()
+        journal.start_phase("IMPLEMENTATION")
+        journal.record_agent_delegation(
+            from_agent="dev-agent",
+            to_agent="backend-agent",
+        )
+
+        jsonl_path = temp_feature_dir / ".ralphy" / "progress.jsonl"
+        with open(jsonl_path) as f:
+            lines = f.readlines()
+            delegation_event = json.loads(lines[-1])
+            assert delegation_event["data"]["task_id"] is None
+
+    def test_agents_used_tracked_in_phase(self, journal, temp_feature_dir):
+        """Test that delegated agents are tracked in phase summary."""
+        journal.start_workflow()
+        journal.start_phase("IMPLEMENTATION")
+
+        # Record multiple delegations
+        journal.record_agent_delegation("dev-agent", "tdd-red-agent")
+        journal.record_agent_delegation("dev-agent", "backend-agent")
+        journal.record_agent_delegation("dev-agent", "tdd-red-agent")  # Duplicate
+
+        journal.end_phase("success")
+        journal.end_workflow("completed")
+
+        summary_path = temp_feature_dir / ".ralphy" / "progress_summary.json"
+        with open(summary_path) as f:
+            summary = json.load(f)
+            impl_phase = summary["phases"][0]
+            # Should have unique agents only
+            assert impl_phase["agents_used"] == ["tdd-red-agent", "backend-agent"]
+
+    def test_all_agents_used_aggregated_in_summary(self, journal, temp_feature_dir):
+        """Test that all_agents_used aggregates from all phases."""
+        journal.start_workflow()
+
+        # Phase 1: SPECIFICATION - no delegations
+        journal.start_phase("SPECIFICATION")
+        journal.end_phase("success")
+
+        # Phase 2: IMPLEMENTATION - some delegations
+        journal.start_phase("IMPLEMENTATION")
+        journal.record_agent_delegation("dev-agent", "tdd-red-agent")
+        journal.record_agent_delegation("dev-agent", "backend-agent")
+        journal.end_phase("success")
+
+        # Phase 3: QA - different delegation
+        journal.start_phase("QA")
+        journal.record_agent_delegation("qa-agent", "security-agent")
+        journal.end_phase("success")
+
+        journal.end_workflow("completed")
+
+        summary_path = temp_feature_dir / ".ralphy" / "progress_summary.json"
+        with open(summary_path) as f:
+            summary = json.load(f)
+            # all_agents_used should have all unique agents from all phases
+            assert "tdd-red-agent" in summary["all_agents_used"]
+            assert "backend-agent" in summary["all_agents_used"]
+            assert "security-agent" in summary["all_agents_used"]
+            assert len(summary["all_agents_used"]) == 3
+
+    def test_phase_summary_includes_agents_used_field(self, journal, temp_feature_dir):
+        """Test that PhaseSummary to_dict includes agents_used."""
+        journal.start_workflow()
+        journal.start_phase("IMPLEMENTATION")
+        journal.record_agent_delegation("dev-agent", "backend-agent")
+        journal.end_phase("success")
+        journal.end_workflow("completed")
+
+        summary_path = temp_feature_dir / ".ralphy" / "progress_summary.json"
+        with open(summary_path) as f:
+            summary = json.load(f)
+            impl_phase = summary["phases"][0]
+            assert "agents_used" in impl_phase
+            assert impl_phase["agents_used"] == ["backend-agent"]
+
+    def test_workflow_summary_includes_all_agents_used_field(self, journal, temp_feature_dir):
+        """Test that WorkflowSummary to_dict includes all_agents_used."""
+        journal.start_workflow()
+        journal.start_phase("IMPLEMENTATION")
+        journal.end_phase("success")
+        journal.end_workflow("completed")
+
+        summary_path = temp_feature_dir / ".ralphy" / "progress_summary.json"
+        with open(summary_path) as f:
+            summary = json.load(f)
+            assert "all_agents_used" in summary
+            assert isinstance(summary["all_agents_used"], list)
+
+    def test_record_delegation_not_started(self, journal, temp_feature_dir):
+        """Test that delegation is not recorded if workflow not started."""
+        journal.record_agent_delegation("dev-agent", "backend-agent")
+
+        jsonl_path = temp_feature_dir / ".ralphy" / "progress.jsonl"
+        assert not jsonl_path.exists()
+
+    def test_delegation_without_phase(self, journal, temp_feature_dir):
+        """Test recording delegation without active phase."""
+        journal.start_workflow()
+        # No start_phase called
+        journal.record_agent_delegation("dev-agent", "backend-agent")
+
+        jsonl_path = temp_feature_dir / ".ralphy" / "progress.jsonl"
+        with open(jsonl_path) as f:
+            lines = f.readlines()
+            # Should still record the event
+            assert len(lines) == 2  # workflow_start + delegation
+            delegation_event = json.loads(lines[-1])
+            assert delegation_event["event_type"] == "agent_delegation"
+
+
+class TestPhaseSummaryAgentsUsed:
+    """Tests for agents_used field in PhaseSummary dataclass."""
+
+    def test_phase_summary_default_agents_used(self):
+        """Test that agents_used defaults to empty list."""
+        summary = PhaseSummary(
+            phase_name="IMPLEMENTATION",
+            model="opus",
+            timeout=14400,
+            started_at="2026-01-22T10:00:00+00:00",
+        )
+        assert summary.agents_used == []
+
+    def test_phase_summary_with_agents_used(self):
+        """Test PhaseSummary with agents_used populated."""
+        summary = PhaseSummary(
+            phase_name="IMPLEMENTATION",
+            model="opus",
+            timeout=14400,
+            started_at="2026-01-22T10:00:00+00:00",
+            agents_used=["tdd-red-agent", "backend-agent"],
+        )
+        assert summary.agents_used == ["tdd-red-agent", "backend-agent"]
+
+    def test_phase_summary_to_dict_includes_agents_used(self):
+        """Test that to_dict includes agents_used."""
+        summary = PhaseSummary(
+            phase_name="IMPLEMENTATION",
+            model="opus",
+            timeout=14400,
+            started_at="2026-01-22T10:00:00+00:00",
+            agents_used=["backend-agent"],
+        )
+        d = summary.to_dict()
+        assert "agents_used" in d
+        assert d["agents_used"] == ["backend-agent"]
+
+
+class TestWorkflowSummaryAllAgentsUsed:
+    """Tests for all_agents_used field in WorkflowSummary dataclass."""
+
+    def test_workflow_summary_default_all_agents_used(self):
+        """Test that all_agents_used defaults to empty list."""
+        summary = WorkflowSummary(
+            feature_name="test-feature",
+            started_at="2026-01-22T10:00:00+00:00",
+        )
+        assert summary.all_agents_used == []
+
+    def test_workflow_summary_with_all_agents_used(self):
+        """Test WorkflowSummary with all_agents_used populated."""
+        summary = WorkflowSummary(
+            feature_name="test-feature",
+            started_at="2026-01-22T10:00:00+00:00",
+            all_agents_used=["tdd-red-agent", "backend-agent"],
+        )
+        assert summary.all_agents_used == ["tdd-red-agent", "backend-agent"]
+
+    def test_workflow_summary_to_dict_includes_all_agents_used(self):
+        """Test that to_dict includes all_agents_used."""
+        summary = WorkflowSummary(
+            feature_name="test-feature",
+            started_at="2026-01-22T10:00:00+00:00",
+            all_agents_used=["backend-agent", "frontend-agent"],
+        )
+        d = summary.to_dict()
+        assert "all_agents_used" in d
+        assert d["all_agents_used"] == ["backend-agent", "frontend-agent"]

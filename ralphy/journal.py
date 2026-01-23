@@ -29,6 +29,7 @@ class EventType(str, Enum):
     TASK_START = "task_start"
     TASK_COMPLETE = "task_complete"
     ACTIVITY = "activity"
+    AGENT_DELEGATION = "agent_delegation"
     TOKEN_UPDATE = "token_update"
     CIRCUIT_BREAKER = "circuit_breaker"
     VALIDATION = "validation"
@@ -79,6 +80,7 @@ class PhaseSummary:
     tasks_completed: int = 0
     token_usage: Optional[dict] = None
     cost_usd: float = 0.0
+    agents_used: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -94,6 +96,7 @@ class PhaseSummary:
             "tasks_completed": self.tasks_completed,
             "token_usage": self.token_usage,
             "cost_usd": self.cost_usd,
+            "agents_used": self.agents_used,
         }
 
 
@@ -111,6 +114,7 @@ class WorkflowSummary:
     total_tasks_completed: int = 0
     total_tasks_total: int = 0
     fresh_start: bool = False
+    all_agents_used: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -125,6 +129,7 @@ class WorkflowSummary:
             "total_tasks_completed": self.total_tasks_completed,
             "total_tasks_total": self.total_tasks_total,
             "fresh_start": self.fresh_start,
+            "all_agents_used": self.all_agents_used,
         }
 
 
@@ -297,6 +302,13 @@ class WorkflowJournal:
             self._summary.total_tasks_total = max(
                 (p.tasks_total for p in self._summary.phases), default=0
             )
+            # Aggregate all unique agents used across all phases
+            all_agents: list[str] = []
+            for phase in self._summary.phases:
+                for agent in phase.agents_used:
+                    if agent not in all_agents:
+                        all_agents.append(agent)
+            self._summary.all_agents_used = all_agents
 
             event = JournalEvent(
                 timestamp=now,
@@ -450,6 +462,40 @@ class WorkflowJournal:
                 detail=activity.detail,
             )
             self._writer.append_event(event)
+
+    def record_agent_delegation(
+        self,
+        from_agent: str,
+        to_agent: str,
+        task_id: Optional[str] = None,
+    ) -> None:
+        """Record an agent delegation event.
+
+        This method creates a dedicated AGENT_DELEGATION event and tracks
+        the delegated agent in the current phase's agents_used list.
+
+        Args:
+            from_agent: The agent delegating the work
+            to_agent: The agent receiving the delegation
+            task_id: Optional task ID associated with the delegation
+        """
+        with self._lock:
+            if not self._started:
+                return
+
+            # Record the delegation event
+            event = self._create_event(
+                EventType.AGENT_DELEGATION,
+                from_agent=from_agent,
+                to_agent=to_agent,
+                task_id=task_id,
+            )
+            self._writer.append_event(event)
+
+            # Track the delegated agent in current phase's agents_used
+            if self._current_phase and to_agent:
+                if to_agent not in self._current_phase.agents_used:
+                    self._current_phase.agents_used.append(to_agent)
 
     def record_token_update(self, usage: TokenUsage, cost: float) -> None:
         """Record a token usage update.
