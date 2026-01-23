@@ -439,21 +439,9 @@ class ProgressDisplay:
         self._on_activity = on_activity  # Callback(activity) for detected activities
         self._renderer = ProgressRenderer()
 
-        # Progress bars
-        self._phase_progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[bold cyan]{task.description}"),
-            BarColumn(bar_width=30),
-            TaskProgressColumn(),
-            console=self.console,
-        )
-        self._tasks_progress = Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(bar_width=30),
-            TextColumn("[progress.percentage]{task.completed}/{task.total} completed"),
-            console=self.console,
-        )
+        # Progress bars (created in start())
+        self._phase_progress: Optional[Progress] = None
+        self._tasks_progress: Optional[Progress] = None
 
         # Task IDs
         self._phase_task_id: Optional[int] = None

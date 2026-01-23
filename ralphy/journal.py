@@ -261,13 +261,7 @@ class WorkflowJournal:
                 fresh_start=fresh,
             )
 
-            event = self._create_event(
-                EventType.WORKFLOW_START,
-                phase=None,
-                feature=self.feature_name,
-                fresh=fresh,
-            )
-            # Override timestamp since we already have `now`
+            # Use captured `now` timestamp for consistency with _summary.started_at
             event = JournalEvent(
                 timestamp=now,
                 event_type=EventType.WORKFLOW_START,

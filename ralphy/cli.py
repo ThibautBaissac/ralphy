@@ -23,6 +23,22 @@ from ralphy.constants import FEATURE_NAME_PATTERN
 from ralphy.state import Phase, StateManager
 
 
+def _check_dependencies() -> list[tuple[str, str]]:
+    """Check for required dependencies.
+
+    Returns:
+        List of (name, install_hint) tuples for missing dependencies.
+    """
+    missing = []
+    if not check_claude_installed():
+        missing.append(("Claude Code CLI", "npm install -g @anthropic-ai/claude-code"))
+    if not check_git_installed():
+        missing.append(("Git", "https://git-scm.com/"))
+    if not check_gh_installed():
+        missing.append(("GitHub CLI (gh)", "https://cli.github.com/"))
+    return missing
+
+
 def description_to_feature_name(description: str, max_length: int = 50) -> str:
     """Convert a description string to a valid feature name slug.
 
@@ -271,17 +287,11 @@ def start(feature_or_description: str, no_progress: bool, fresh: bool):
     logger = get_logger()
     show_progress = not no_progress
 
-    # Preliminary checks
-    if not check_claude_installed():
-        logger.error("Claude Code CLI not found. Install it with: npm install -g @anthropic-ai/claude-code")
-        sys.exit(1)
-
-    if not check_git_installed():
-        logger.error("Git not found. Install Git: https://git-scm.com/")
-        sys.exit(1)
-
-    if not check_gh_installed():
-        logger.error("GitHub CLI (gh) not found. Install it: https://cli.github.com/")
+    # Check required dependencies
+    missing_deps = _check_dependencies()
+    if missing_deps:
+        for name, hint in missing_deps:
+            logger.error(f"{name} not found. Install it: {hint}")
         sys.exit(1)
 
     # Determine if this is quick start mode or normal mode
