@@ -31,6 +31,7 @@ class ActivityType(Enum):
     TASK_COMPLETE = "task_complete"
     READING_FILE = "reading_file"
     THINKING = "thinking"
+    AGENT_DELEGATION = "agent_delegation"
 
 
 @dataclass
@@ -92,6 +93,15 @@ ACTIVITY_PATTERNS: dict[ActivityType, list[str]] = {
         r"Analyzing",
         r"Checking",
     ],
+    ActivityType.AGENT_DELEGATION: [
+        # Matches: "delegate to model-agent", "delegating this to the tdd-orchestrator-agent"
+        # MUST have "to" before agent name - captures agent name with -agent suffix required
+        r"(?:delegate|delegating)\s+(?:\w+\s+)*?to\s+(?:the\s+)?([a-z0-9_-]+-agent)",
+        # Matches: "I'll use the model-agent", "using tdd-orchestrator-agent"
+        r"(?:use|using|invoke|invoking)\s+(?:the\s+)?([a-z0-9_-]+-agent)",
+        # Matches Task tool subagent_type in JSON stream output
+        r'"subagent_type":\s*"([a-z0-9_-]+)"',
+    ],
 }
 
 
@@ -111,10 +121,12 @@ class OutputParser:
 
     def parse(self, text: str) -> Optional[Activity]:
         """Parses text and returns detected activity."""
-        # Priority: TASK_START/COMPLETE detected first for logging
+        # Priority: TASK_START/COMPLETE detected first for logging,
+        # AGENT_DELEGATION high priority to detect agent handoffs
         priority_order = [
             ActivityType.TASK_START,
             ActivityType.TASK_COMPLETE,
+            ActivityType.AGENT_DELEGATION,
             ActivityType.WRITING_FILE,
             ActivityType.RUNNING_TEST,
             ActivityType.RUNNING_COMMAND,
@@ -146,6 +158,7 @@ class OutputParser:
         descriptions = {
             ActivityType.TASK_START: f"Task {detail}: {detail2}" if detail2 else f"Starting task {detail}" if detail else "Starting task",
             ActivityType.TASK_COMPLETE: f"Completed task {detail}" if detail else "Task completed",
+            ActivityType.AGENT_DELEGATION: f"Delegating to {detail}" if detail else "Delegating to agent",
             ActivityType.WRITING_FILE: f"Writing {detail}" if detail else "Writing file",
             ActivityType.RUNNING_TEST: "Running tests",
             ActivityType.RUNNING_COMMAND: f"Running: {detail}" if detail else "Running command",
@@ -220,6 +233,7 @@ class ProgressState:
     tdd_enabled: bool = False
     agent_name: str = ""
     available_agents: list[str] = field(default_factory=list)
+    delegated_from: Optional[str] = None  # Original agent if delegation occurred
     # In-memory task completion counter (incremented on TASK_COMPLETE detection)
     # This avoids race condition where file isn't written yet when callback fires
     detected_completed: int = 0
@@ -301,7 +315,10 @@ class ProgressRenderer:
             agent_line = Text()
             agent_line.append("Agent: ", style="dim")
             agent_line.append(state.agent_name, style="cyan")
-            if state.available_agents:
+            # Show delegation context or available agents count
+            if state.delegated_from and state.delegated_from != state.agent_name:
+                agent_line.append(f" (via {state.delegated_from})", style="dim italic")
+            elif state.available_agents:
                 agent_line.append(f" (+{len(state.available_agents)} available)", style="dim")
             agent_line.append("  TDD: ", style="dim")
             if state.tdd_enabled:
@@ -642,6 +659,32 @@ class ProgressDisplay:
                     # Reset current task
                     self._state.current_task_id = None
                     self._state.current_task_name = None
+
+                    # Reset agent to original if we were in a delegated state
+                    if self._state.delegated_from:
+                        self._state.agent_name = self._state.delegated_from
+                        self._state.delegated_from = None
+
+                # Agent delegation detected - update current agent display
+                elif activity.type == ActivityType.AGENT_DELEGATION:
+                    if activity.detail:
+                        # Normalize agent name (e.g., "model" -> "model-agent")
+                        new_agent = activity.detail.lower().strip()
+                        if not new_agent.endswith("-agent"):
+                            new_agent = f"{new_agent}-agent"
+
+                        # Only update if different from current and agent is available
+                        if new_agent != self._state.agent_name:
+                            # Check if new agent matches one in available_agents list
+                            is_known_agent = new_agent in self._state.available_agents or any(
+                                a.lower() == new_agent or a.lower().startswith(new_agent.replace("-agent", ""))
+                                for a in self._state.available_agents
+                            )
+                            if is_known_agent:
+                                # Store original agent for later reset
+                                if not self._state.delegated_from:
+                                    self._state.delegated_from = self._state.agent_name
+                                self._state.agent_name = new_agent
 
             # Keeps last output lines
             lines = text.strip().split("\n")
