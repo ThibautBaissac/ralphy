@@ -275,7 +275,7 @@ class TestInitPromptsCommand:
         assert result.exit_code == 0
 
         prompts_dir = tmp_path / ".ralphy" / "prompts"
-        expected_files = ["spec_agent.md", "dev_agent.md", "qa_agent.md", "pr_agent.md"]
+        expected_files = ["spec_agent.md", "dev_prompt.md", "qa_agent.md", "pr_agent.md"]
 
         for filename in expected_files:
             prompt_file = prompts_dir / filename
@@ -302,7 +302,7 @@ class TestInitPromptsCommand:
         assert (prompts_dir / "spec_agent.md").read_text() == existing_content
 
         # Other files should be created
-        assert (prompts_dir / "dev_agent.md").exists()
+        assert (prompts_dir / "dev_prompt.md").exists()
         assert (prompts_dir / "qa_agent.md").exists()
         assert (prompts_dir / "pr_agent.md").exists()
 
@@ -347,11 +347,12 @@ class TestInitPromptsCommand:
         assert "{{prd_content}}" in spec_content
         assert "{{project_name}}" in spec_content
 
-        # Check dev_agent.md has dev-specific placeholders
-        dev_content = (tmp_path / ".ralphy" / "prompts" / "dev_agent.md").read_text()
+        # Check dev_prompt.md has dev-specific placeholders
+        dev_content = (tmp_path / ".ralphy" / "prompts" / "dev_prompt.md").read_text()
         assert "{{spec_content}}" in dev_content
         assert "{{tasks_content}}" in dev_content
         assert "{{resume_instruction}}" in dev_content
+        assert "{{orchestration_section}}" in dev_content
 
         # Check pr_agent.md has pr-specific placeholders
         pr_content = (tmp_path / ".ralphy" / "prompts" / "pr_agent.md").read_text()

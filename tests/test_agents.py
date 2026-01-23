@@ -546,6 +546,195 @@ class TestPlaceholderReplacement:
         assert "{{optional}}" not in result
 
 
+class TestDevAgentDiscovery:
+    """Tests for DevAgent agent discovery functionality."""
+
+    @pytest.fixture
+    def temp_project_with_agents(self):
+        """Creates a temporary project with agents directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / "SPEC.md").write_text("# Specs")
+            (feature_dir / "TASKS.md").write_text("## Task 1\n- **Status**: pending")
+            agents_dir = project_path / ".claude" / "agents"
+            agents_dir.mkdir(parents=True)
+            yield project_path, feature_dir, agents_dir
+
+    def test_discover_agents_valid(self, temp_project_with_agents):
+        """Test that valid agents are discovered."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        (agents_dir / "reviewer.md").write_text(
+            "---\nname: reviewer\ndescription: Reviews code\n---\n# Reviewer Agent"
+        )
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        discovered = agent._discover_agents()
+
+        assert len(discovered) == 1
+        assert discovered[0]["name"] == "reviewer"
+        assert discovered[0]["description"] == "Reviews code"
+
+    def test_discover_agents_multiple(self, temp_project_with_agents):
+        """Test that multiple agents are discovered."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        (agents_dir / "reviewer.md").write_text(
+            "---\nname: reviewer\ndescription: Reviews code\n---\n"
+        )
+        (agents_dir / "tester.md").write_text(
+            "---\nname: tester\ndescription: Writes tests\n---\n"
+        )
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        discovered = agent._discover_agents()
+
+        assert len(discovered) == 2
+        names = {a["name"] for a in discovered}
+        assert names == {"reviewer", "tester"}
+
+    def test_discover_agents_missing_directory(self):
+        """Test that missing directory returns empty list."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir)
+            feature_dir = project_path / "docs" / "features" / "test-feature"
+            feature_dir.mkdir(parents=True)
+            (feature_dir / "SPEC.md").write_text("# Specs")
+            (feature_dir / "TASKS.md").write_text("## Task 1\n- **Status**: pending")
+
+            config = ProjectConfig()
+            agent = DevAgent(project_path, config, feature_dir=feature_dir)
+            discovered = agent._discover_agents()
+
+            assert discovered == []
+
+    def test_discover_agents_skips_invalid_yaml(self, temp_project_with_agents):
+        """Test that files with invalid YAML are skipped."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        (agents_dir / "invalid.md").write_text("---\n::: invalid yaml\n---\n")
+        (agents_dir / "valid.md").write_text(
+            "---\nname: valid\ndescription: Valid agent\n---\n"
+        )
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        discovered = agent._discover_agents()
+
+        assert len(discovered) == 1
+        assert discovered[0]["name"] == "valid"
+
+    def test_discover_agents_skips_missing_fields(self, temp_project_with_agents):
+        """Test that files with missing name or description are skipped."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        (agents_dir / "no_name.md").write_text(
+            "---\ndescription: Missing name\n---\n"
+        )
+        (agents_dir / "no_desc.md").write_text("---\nname: missing_desc\n---\n")
+        (agents_dir / "valid.md").write_text(
+            "---\nname: valid\ndescription: Valid agent\n---\n"
+        )
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        discovered = agent._discover_agents()
+
+        assert len(discovered) == 1
+        assert discovered[0]["name"] == "valid"
+
+    def test_discover_agents_skips_no_frontmatter(self, temp_project_with_agents):
+        """Test that files without frontmatter are skipped."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        (agents_dir / "no_frontmatter.md").write_text("# Agent without frontmatter")
+        (agents_dir / "valid.md").write_text(
+            "---\nname: valid\ndescription: Valid agent\n---\n"
+        )
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        discovered = agent._discover_agents()
+
+        assert len(discovered) == 1
+        assert discovered[0]["name"] == "valid"
+
+    def test_format_agents_list(self, temp_project_with_agents):
+        """Test that agents are formatted as markdown list."""
+        project_path, feature_dir, _ = temp_project_with_agents
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+
+        agents = [
+            {"name": "reviewer", "description": "Reviews code"},
+            {"name": "tester", "description": "Writes tests"},
+        ]
+        result = agent._format_agents_list(agents)
+
+        assert "- **reviewer**: Reviews code" in result
+        assert "- **tester**: Writes tests" in result
+
+    def test_format_agents_list_empty(self, temp_project_with_agents):
+        """Test that empty list returns empty string."""
+        project_path, feature_dir, _ = temp_project_with_agents
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+
+        result = agent._format_agents_list([])
+        assert result == ""
+
+    def test_build_orchestration_section_with_agents(self, temp_project_with_agents):
+        """Test that orchestration section is built when agents exist."""
+        project_path, feature_dir, _ = temp_project_with_agents
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+
+        agents = [{"name": "reviewer", "description": "Reviews code"}]
+        result = agent._build_orchestration_section(agents)
+
+        assert "## Agent Orchestration" in result
+        assert "### Available Agents" in result
+        assert "- **reviewer**: Reviews code" in result
+        assert "### Delegation Guidelines" in result
+        assert "Task tool" in result
+
+    def test_build_orchestration_section_empty(self, temp_project_with_agents):
+        """Test that empty agents returns empty string."""
+        project_path, feature_dir, _ = temp_project_with_agents
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+
+        result = agent._build_orchestration_section([])
+        assert result == ""
+
+    def test_prompt_includes_orchestration_when_agents_exist(
+        self, temp_project_with_agents
+    ):
+        """Test that prompt includes orchestration section when agents exist."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        (agents_dir / "reviewer.md").write_text(
+            "---\nname: reviewer\ndescription: Reviews code\n---\n"
+        )
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        prompt = agent.build_prompt()
+
+        assert "## Agent Orchestration" in prompt
+        assert "- **reviewer**: Reviews code" in prompt
+
+    def test_prompt_no_orchestration_without_agents(self, temp_project_with_agents):
+        """Test that prompt has no orchestration section without agents."""
+        project_path, feature_dir, agents_dir = temp_project_with_agents
+        # Remove agents directory
+        agents_dir.rmdir()
+
+        config = ProjectConfig()
+        agent = DevAgent(project_path, config, feature_dir=feature_dir)
+        prompt = agent.build_prompt()
+
+        assert "## Agent Orchestration" not in prompt
+
+
 class TestTDDInstructions:
     """Tests for TDD instructions placeholder."""
 

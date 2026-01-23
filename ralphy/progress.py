@@ -154,6 +154,47 @@ class OutputParser:
         }
         return descriptions.get(activity_type, "Working...")
 
+    def parse_all_completions(self, text: str) -> list[str]:
+        """Extract all completed task IDs from text.
+
+        Matches patterns like:
+        - ### Task 1.2 ... **Status**: completed
+        - ## Task 2 ... **Status**: completed
+        - Task 1.2 completed
+        - in_progress → completed (for task ID in context)
+
+        This method scans the entire text for ALL completion markers,
+        unlike parse() which returns on the first match.
+
+        Returns:
+            List of task IDs (e.g., ["1", "1.2", "2.3"]) that are marked completed.
+        """
+        completed_ids: list[str] = []
+
+        # Pattern 1: Task header with status on same logical block
+        # Matches: ### Task 1.2 - Name\n**Status**: completed
+        task_block_pattern = re.compile(
+            r"#{2,3}\s*Task\s*([\d.]+).*?(?:\*\*Status\*\*:\s*completed)",
+            re.IGNORECASE | re.DOTALL
+        )
+        for match in task_block_pattern.finditer(text):
+            task_id = match.group(1)
+            if task_id and task_id not in completed_ids:
+                completed_ids.append(task_id)
+
+        # Pattern 2: Explicit completion statements
+        # Matches: "Task 1.2 completed", "Completed Task 1.2"
+        explicit_pattern = re.compile(
+            r"(?:Task\s*([\d.]+).*?completed|Completed\s*Task\s*([\d.]+))",
+            re.IGNORECASE
+        )
+        for match in explicit_pattern.finditer(text):
+            task_id = match.group(1) or match.group(2)
+            if task_id and task_id not in completed_ids:
+                completed_ids.append(task_id)
+
+        return completed_ids
+
 
 @dataclass
 class ProgressState:
@@ -175,6 +216,14 @@ class ProgressState:
     # Token usage tracking
     token_usage: Optional[TokenUsage] = None
     total_cost_usd: float = 0.0
+    # TDD and agent info
+    tdd_enabled: bool = False
+    agent_name: str = ""
+    available_agents: list[str] = field(default_factory=list)
+    # In-memory task completion counter (incremented on TASK_COMPLETE detection)
+    # This avoids race condition where file isn't written yet when callback fires
+    detected_completed: int = 0
+    detected_task_ids: set[str] = field(default_factory=set)  # Track detected task IDs to avoid double counting
 
 
 @dataclass
@@ -246,6 +295,20 @@ class ProgressRenderer:
             info_line.append("  Model: ", style="dim")
             info_line.append(state.model_name, style="bold magenta")
         elements.append(info_line)
+
+        # Agent and TDD status line
+        if state.agent_name:
+            agent_line = Text()
+            agent_line.append("Agent: ", style="dim")
+            agent_line.append(state.agent_name, style="cyan")
+            if state.available_agents:
+                agent_line.append(f" (+{len(state.available_agents)} available)", style="dim")
+            agent_line.append("  TDD: ", style="dim")
+            if state.tdd_enabled:
+                agent_line.append("enabled", style="green bold")
+            else:
+                agent_line.append("disabled", style="dim")
+            elements.append(agent_line)
 
         # Elapsed time and timeout line
         if state.phase_started_at:
@@ -386,6 +449,9 @@ class ProgressDisplay:
         model: str = "",
         timeout: int = 0,
         feature_name: str = "",
+        tdd_enabled: bool = False,
+        agent_name: str = "",
+        available_agents: Optional[list[str]] = None,
     ) -> None:
         """Starts progress display."""
         with self._lock:
@@ -396,6 +462,11 @@ class ProgressDisplay:
                 phase_started_at=datetime.now(),
                 phase_timeout=timeout,
                 feature_name=feature_name,
+                tdd_enabled=tdd_enabled,
+                agent_name=agent_name,
+                available_agents=available_agents or [],
+                detected_completed=0,
+                detected_task_ids=set(),
             )
 
             # Reset progress bars
@@ -426,9 +497,10 @@ class ProgressDisplay:
                 self._tasks_task_id = None
 
             self._active = True
-            context = self._build_render_context()
+            # Pass self as renderable - Rich will call __rich__() on each refresh
+            # This ensures the display always reflects current state
             self._live = Live(
-                self._renderer.render(context),
+                self,  # ProgressDisplay implements __rich__()
                 console=self.console,
                 refresh_per_second=4,
                 transient=True,
@@ -453,30 +525,45 @@ class ProgressDisplay:
                 )
             self._refresh()
 
-    def update_tasks(self, completed: int, total: int) -> None:
-        """Updates task counter."""
+    def update_tasks(self, completed: int, total: int, from_thread: bool = False) -> None:
+        """Updates task counter.
+
+        Args:
+            completed: Number of completed tasks
+            total: Total number of tasks
+            from_thread: If True, skip _refresh() as Rich Live isn't thread-safe.
+                        The auto-refresh (4/sec) will pick up state changes.
+        """
         with self._lock:
             self._state.tasks_completed = completed
             self._state.tasks_total = total
+            # Sync detected counter if file-based count is higher (authoritative source)
+            # This ensures polling thread's file-based count can correct any detection misses
+            self._state.detected_completed = max(self._state.detected_completed, completed)
 
             if self._tasks_task_id is None and total > 0:
                 self._tasks_task_id = self._tasks_progress.add_task(
                     "Tasks", total=total, completed=completed
                 )
             elif self._tasks_task_id is not None:
+                # Use max of both counts to handle race conditions
+                effective_completed = max(completed, self._state.detected_completed)
                 self._tasks_progress.update(
-                    self._tasks_task_id, completed=completed, total=total
+                    self._tasks_task_id, completed=effective_completed, total=total
                 )
 
-            # Calculate phase progress based on tasks
+            # Calculate phase progress based on best available count
             if total > 0:
-                self._state.phase_progress = (completed / total) * 100
+                effective_completed = max(completed, self._state.detected_completed)
+                self._state.phase_progress = (effective_completed / total) * 100
                 if self._phase_task_id is not None:
                     self._phase_progress.update(
                         self._phase_task_id, completed=self._state.phase_progress
                     )
 
-            self._refresh()
+            # Skip refresh if called from background thread (Rich Live isn't thread-safe)
+            if not from_thread:
+                self._refresh()
 
     def process_output(self, text: str) -> None:
         """Processes output and updates display."""
@@ -492,6 +579,9 @@ class ProgressDisplay:
 
                 # Handles task start
                 if activity.type == ActivityType.TASK_START:
+                    # Clear old output lines when starting a new task
+                    # This prevents the display from appearing "frozen" on earlier messages
+                    self._state.last_output_lines.clear()
                     # detail format: "task_id:task_name" or just "task_id"
                     if activity.detail and ":" in activity.detail:
                         parts = activity.detail.split(":", 1)
@@ -508,18 +598,47 @@ class ProgressDisplay:
                             self._state.current_task_name,
                         )
 
-                # Task completion detected - delegate to orchestrator callback
-                # The orchestrator reads the authoritative count from TASKS.md
-                # and calls update_tasks() to sync the display
+                # Task completion detected - extract ALL completed task IDs from text
+                # This fixes the issue where parse() only returns the first match
                 elif activity.type == ActivityType.TASK_COMPLETE:
-                    completed_task_id = activity.detail or self._state.current_task_id
-                    # Callback for logging and state update
-                    if self._on_task_event:
-                        self._on_task_event(
-                            "complete",
-                            completed_task_id,
-                            self._state.current_task_name,
+                    # Extract all completed task IDs from the full text
+                    completed_ids = self._parser.parse_all_completions(text)
+
+                    # Fall back to single task ID detection if parse_all_completions finds nothing
+                    if not completed_ids:
+                        fallback_id = activity.detail or self._state.current_task_id
+                        completed_ids = [fallback_id] if fallback_id else []
+
+                    # Process each newly completed task
+                    new_completions = False
+                    for task_id in completed_ids:
+                        if task_id not in self._state.detected_task_ids:
+                            self._state.detected_task_ids.add(task_id)
+                            self._state.detected_completed += 1
+                            new_completions = True
+                            # Fire callback for each completion
+                            if self._on_task_event:
+                                self._on_task_event("complete", task_id, None)
+
+                    # If no task IDs were found at all, still fire callback once (for journal logging)
+                    # This preserves backward compatibility where completion events are logged
+                    if not completed_ids and self._on_task_event:
+                        self._on_task_event("complete", None, self._state.current_task_name)
+
+                    # Update progress bar with total detected completions
+                    if new_completions and self._tasks_task_id is not None and self._state.tasks_total > 0:
+                        self._tasks_progress.update(
+                            self._tasks_task_id,
+                            completed=self._state.detected_completed
                         )
+                        # Update phase progress based on in-memory count
+                        self._state.phase_progress = (self._state.detected_completed / self._state.tasks_total) * 100
+                        if self._phase_task_id is not None:
+                            self._phase_progress.update(
+                                self._phase_task_id,
+                                completed=self._state.phase_progress
+                            )
+
                     # Reset current task
                     self._state.current_task_id = None
                     self._state.current_task_name = None
@@ -545,6 +664,16 @@ class ProgressDisplay:
         with self._lock:
             self._state.token_usage = usage
             self._state.total_cost_usd = cost
+            self._refresh()
+
+    def update_available_agents(self, available_agents: list[str]) -> None:
+        """Update the list of available agents for orchestration display.
+
+        Args:
+            available_agents: List of agent names discovered in .claude/agents/
+        """
+        with self._lock:
+            self._state.available_agents = available_agents
             self._refresh()
 
     def _build_render_context(self) -> RenderContext:
@@ -573,6 +702,35 @@ class ProgressDisplay:
         if live and self._active:
             context = self._build_render_context()
             live.update(self._renderer.render(context))
+
+    def __rich__(self) -> Panel:
+        """Make ProgressDisplay a Rich renderable.
+
+        This method is called by Rich Live on each refresh, ensuring
+        the display always reflects the current state.
+
+        Important: We force-update the Progress objects here because they
+        hold their own internal state that may not reflect our ProgressState.
+        This ensures the progress bars always show the correct values.
+        """
+        with self._lock:
+            # Force progress bar values to reflect current state
+            # This fixes the issue where Progress objects don't auto-update
+            if self._phase_task_id is not None:
+                self._phase_progress.update(
+                    self._phase_task_id,
+                    completed=self._state.phase_progress
+                )
+            if self._tasks_task_id is not None:
+                # Use max of file-based count and detected count to handle race conditions
+                completed = max(self._state.tasks_completed, self._state.detected_completed)
+                self._tasks_progress.update(
+                    self._tasks_task_id,
+                    completed=completed,
+                    total=self._state.tasks_total
+                )
+            context = self._build_render_context()
+            return self._renderer.render(context)
 
     @property
     def is_active(self) -> bool:

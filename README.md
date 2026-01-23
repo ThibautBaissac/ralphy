@@ -1,72 +1,46 @@
 # Ralphy
 
-AI-powered code development tool based on Claude Code.
+Ralphy transforms a feature description into a mergeable Pull Request. It orchestrates Claude Code through specialized agents that handle specification, implementation, QA, and PR creation - with human validation at key stages.
 
-Ralphy transforms a PRD (Product Requirements Document) into a mergeable Pull Request through an autonomous loop with human validation at key stages.
-
-## Installation
-
-### Recommended: pipx
+## Quick Start
 
 ```bash
-# Install pipx if needed
-brew install pipx
-pipx ensurepath
+# Install (pick one)
+pipx install -e /path/to/Ralphy/    # recommended
+uv tool install -e /path/to/Ralphy/ # faster alternative
 
-# Install Ralphy
-pipx install -e /path/to/Ralphy/
+# Run with just a description
+ralphy start "Add user authentication with OAuth2"
 ```
 
-### Alternative: uv (ultra-fast)
-
-```bash
-# Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install Ralphy
-uv tool install -e /path/to/Ralphy/
-```
-
-### For development
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
+That's it. Ralphy will generate specs, implement code, run QA, and create a PR.
 
 ## Prerequisites
 
 - Python 3.11+
-- Claude Code CLI installed and authenticated (`claude --version`)
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - Git configured
-- GitHub CLI (`gh`) authenticated for PR creation
+- GitHub CLI (`gh`) authenticated
 
-## Limitations
+**Note**: Windows is not supported.
 
-- **Windows**: Not supported (technical limitation with `select()`)
+## Two Ways to Use Ralphy
 
-## Usage
+### 1. Quick Start (fastest)
 
-### Quick Start Mode (easiest)
-
-Launch directly with a description - Ralphy creates everything automatically:
+Just describe what you want:
 
 ```bash
-ralphy start "Add OAuth2 authentication with Google"
+ralphy start "Add dark mode toggle to settings page"
+ralphy start "Implement rate limiting for API endpoints"
+ralphy start "Add CSV export for user reports"
 ```
 
-Ralphy will:
-1. Derive a feature name: `add-oauth2-authentication-with-google`
-2. Create the `docs/features/<feature>/` structure
-3. Generate a minimal PRD from your description
-4. Launch the complete workflow
+Ralphy creates everything: feature directory, PRD, specs, code, tests, and PR.
 
-### Standard Mode (existing PRD)
+### 2. Custom PRD (more control)
 
-#### 1. Prepare the feature
-
-Create the folder and PRD:
+For complex features, write your own PRD:
 
 ```bash
 mkdir -p docs/features/my-feature
@@ -75,165 +49,170 @@ mkdir -p docs/features/my-feature
 Create `docs/features/my-feature/PRD.md`:
 
 ```markdown
-# My Feature
+# User Authentication
 
 ## Context
-[Describe the context and problem to solve]
+Our app needs secure user authentication before launch.
 
 ## Objective
-[What the project should accomplish]
+Implement OAuth2 login with Google and GitHub providers.
 
 ## Features
-- Feature 1: description
-- Feature 2: description
+- Social login buttons on landing page
+- User profile creation on first login
+- Session management with secure cookies
+- Logout functionality
 
 ## Constraints
-- Preferred tech stack
-- Existing dependencies
-- Time/performance constraints
+- Use existing User model
+- Must work with current session middleware
+- No additional database migrations if possible
 ```
 
-#### 2. Launch the workflow
+Then launch:
 
 ```bash
 ralphy start my-feature
 ```
 
-### Available commands
+## The Workflow
+
+```
+PRD → [SPEC] → You approve → [DEV] → [QA] → You approve → [PR]
+```
+
+| Phase | What happens | You do |
+|-------|--------------|--------|
+| **SPEC** | Generates architecture + task list | Review SPEC.md and TASKS.md |
+| **DEV** | Implements all tasks, writes tests | Watch progress |
+| **QA** | Analyzes code quality and security | Review QA_REPORT.md |
+| **PR** | Creates GitHub Pull Request | Merge when ready |
+
+You validate twice: after specs (before coding starts) and after QA (before PR creation).
+
+## Commands Reference
 
 ```bash
-# Launch a workflow
-ralphy start <feature>              # Start or resume the workflow
-ralphy start <feature> --fresh      # Force a complete restart
-ralphy start <feature> --no-progress # Disable real-time display
+# Start or resume a feature
+ralphy start my-feature
+ralphy start "Feature description"    # Quick Start mode
+ralphy start my-feature --fresh       # Restart from scratch
+ralphy start my-feature --no-progress # Hide live display
 
-# Quick Start with description
-ralphy start "Feature description"
-
-# Status
-ralphy status <feature>             # Status of a feature
-ralphy status --all                 # Table of all features
+# Check status
+ralphy status my-feature              # Single feature
+ralphy status --all                   # All features
 
 # Control
-ralphy abort <feature>              # Interrupt the running workflow
-ralphy reset <feature>              # Reset state (confirmation required)
+ralphy abort my-feature               # Stop running workflow
+ralphy reset my-feature               # Clear state and start over
 
-# Customization
-ralphy init-prompts                 # Copy prompt templates for customization
-ralphy init-prompts --force         # Overwrite existing prompts
+# Customize prompts for your stack
+ralphy init-prompts                   # Copy templates to .ralphy/prompts/
+ralphy init-prompts --force           # Overwrite existing
 ```
 
-## Workflow
+## Automatic Resume
 
-```
-PRD.md → [SPEC] → Validation → [DEV] → [QA] → Validation → [PR] → Done
-```
-
-| Phase | Agent | Output | Max Duration |
-|-------|-------|--------|--------------|
-| 1. SPECIFICATION | spec-agent | SPEC.md + TASKS.md | 30 min |
-| 2. VALIDATION #1 | human | Approves specs | - |
-| 3. IMPLEMENTATION | dev-agent | Code + tests | 4h |
-| 4. QA | qa-agent | QA_REPORT.md | 30 min |
-| 5. VALIDATION #2 | human | Approves QA report | - |
-| 6. PR | pr-agent | GitHub Pull Request | 10 min |
-
-### Human validations
-
-**Validation #1 (specs)**: Verify that SPEC.md and TASKS.md match your expectations before implementation.
-
-**Validation #2 (QA)**: Review the QA report before PR creation. The report lists detected quality/security issues.
-
-### Automatic resume
-
-If the workflow is interrupted (crash, timeout, rejection), simply relaunch:
+Interrupted? Just run the same command again:
 
 ```bash
 ralphy start my-feature
 ```
 
-Ralphy automatically resumes:
-- **At phase level**: skips already completed phases (SPEC, DEV, QA)
-- **At task level**: resumes from the last completed task in IMPLEMENTATION
+Ralphy resumes from exactly where it stopped - even mid-task during implementation.
 
-### On rejection
+## Project Structure
 
-If you reject at a validation, the workflow enters `REJECTED` state. To relaunch:
-
-```bash
-ralphy start my-feature
-```
-
-## Generated structure
+After running Ralphy:
 
 ```
 my-project/
-├── docs/features/
-│   └── my-feature/
-│       ├── PRD.md              # Your input (or generated in Quick Start)
-│       ├── SPEC.md             # Specifications + architecture
-│       ├── TASKS.md            # Ordered tasks
-│       ├── QA_REPORT.md        # Quality/security report
-│       └── .ralphy/
-│           └── state.json      # Workflow state
+├── docs/features/my-feature/
+│   ├── PRD.md           # Your requirements (input)
+│   ├── SPEC.md          # Generated architecture
+│   ├── TASKS.md         # Task list with status
+│   ├── QA_REPORT.md     # Quality/security analysis
+│   └── .ralphy/
+│       └── state.json   # Workflow progress
 ├── .ralphy/
-│   ├── config.yaml             # Global configuration (optional)
-│   └── prompts/                # Custom prompts (optional)
-├── src/                        # Generated code
-└── tests/                      # Generated tests
+│   ├── config.yaml      # Project config (optional)
+│   └── prompts/         # Custom prompts (optional)
+└── [your code]          # Generated implementation
 ```
 
-## Configuration
+## Configuration (Optional)
 
-Create `.ralphy/config.yaml` to customize (optional):
+Create `.ralphy/config.yaml` for project-wide settings:
 
 ```yaml
 project:
   name: my-project
 
-models:
-  specification: sonnet     # or opus, haiku
-  implementation: opus      # most powerful model for implementation
-  qa: sonnet
-  pr: haiku                 # fast model for PR creation
-
 stack:
-  language: python          # or typescript, go, rust...
-  test_command: pytest      # command to run tests
+  language: ruby              # python, typescript, go, rust...
+  test_command: bundle exec rspec
+
+models:
+  specification: sonnet       # Fast for specs
+  implementation: opus        # Most capable for coding
+  qa: sonnet
+  pr: haiku                   # Fast for simple PR creation
 
 timeouts:
-  specification: 1800       # 30 min
-  implementation: 14400     # 4h
-  qa: 1800                  # 30 min
-  pr: 600                   # 10 min
-
-retry:
-  max_attempts: 2           # 1 = no retry
-  delay_seconds: 5
-
-circuit_breaker:
-  enabled: true
-  inactivity_timeout: 60    # seconds without output
-  max_repeated_errors: 3    # same error repeated
-  task_stagnation_timeout: 600  # 10 min without task completion
+  specification: 1800         # 30 min
+  implementation: 14400       # 4 hours
+  qa: 1800                    # 30 min
+  pr: 600                     # 10 min
 ```
 
-## Real-time display
+## Agent Orchestration (Advanced)
 
-During execution, Ralphy displays:
-- **Task progress**: progress bar and task list
-- **Current activity**: file reading, writing, tests, etc.
-- **Tokens consumed**: input/output tokens and estimated cost in USD
+For large projects, you can define specialized Claude Code agents in `.claude/agents/`. The dev-agent will automatically discover and delegate tasks to them.
 
-Disable with `--no-progress` if you prefer raw logs.
+Create `.claude/agents/backend.md`:
 
-## Tips for a good PRD
+```markdown
+---
+name: backend
+description: Implements Rails models, controllers, and API endpoints
+---
 
-1. **Be precise** about expected features
-2. **Specify the stack** if you have preferences
-3. **List constraints** (performance, security, compatibility)
-4. **Give examples** of usage if relevant
-5. **Keep a reasonable scope** - one PRD = one PR
+You are a backend specialist...
+```
+
+The dev-agent will delegate backend tasks to this agent via Claude's Task tool.
+
+## TDD Mode
+
+Enable test-driven development in your config:
+
+```yaml
+stack:
+  tdd_enabled: true
+```
+
+The dev-agent will follow RED-GREEN-REFACTOR: write failing tests first, implement minimal code to pass, then refactor.
+
+**Note**: TDD instructions apply to the dev-agent directly. If you use agent orchestration, delegated agents won't automatically inherit TDD mode - add TDD instructions to your custom agent prompts in `.claude/agents/` if needed.
+
+## Writing Good PRDs
+
+1. **Be specific** - "Add login" is vague; "Add OAuth2 login with Google" is clear
+2. **List constraints** - Existing code, performance requirements, dependencies
+3. **One feature per PRD** - Keep scope manageable for one PR
+4. **Include examples** - Show expected API responses, UI behavior, etc.
+
+## Development Setup
+
+```bash
+git clone <repo>
+cd Ralphy
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest  # Run tests
+```
 
 ## License
 

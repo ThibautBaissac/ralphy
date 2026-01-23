@@ -1,7 +1,10 @@
 """Development agent - Implements tasks defined in TASKS.md."""
 
 import re
+from pathlib import Path
 from typing import Optional, Tuple
+
+import yaml
 
 from ralphy.agents.base import AgentResult, BaseAgent
 from ralphy.claude import ClaudeResponse
@@ -11,7 +14,7 @@ class DevAgent(BaseAgent):
     """Agent that implements code according to TASKS.md."""
 
     name = "dev-agent"
-    prompt_file = "dev_agent.md"
+    prompt_file = "dev_prompt.md"
 
     def build_prompt(self, start_from_task: Optional[str] = None) -> str:
         """Builds the prompt with specs and tasks.
@@ -22,7 +25,7 @@ class DevAgent(BaseAgent):
         """
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template dev_agent.md not found")
+            self.logger.error("Template dev_prompt.md not found")
             return ""
 
         spec_content = self.read_feature_file("SPEC.md")
@@ -42,11 +45,16 @@ class DevAgent(BaseAgent):
             else ""
         )
 
+        # Discover agents and build orchestration section
+        discovered_agents = self._discover_agents()
+        orchestration_section = self._build_orchestration_section(discovered_agents)
+
         return self._apply_placeholders(
             template,
             spec_content=spec_content,
             tasks_content=tasks_content,
             resume_instruction=resume_instruction,
+            orchestration_section=orchestration_section,
         )
 
     def _build_resume_instruction(self, task_id: str) -> str:
@@ -64,6 +72,96 @@ class DevAgent(BaseAgent):
 - DO NOT reimplement tasks marked as `completed`
 
 Verify: Before starting, read `TASKS.md` and confirm that tasks before {task_id} are `completed`.
+"""
+
+    def _discover_agents(self) -> list[dict[str, str]]:
+        """Discover Claude Code agents in .claude/agents/ directory."""
+        agents_dir = self.project_path / ".claude" / "agents"
+
+        if not agents_dir.exists() or not agents_dir.is_dir():
+            self.logger.info("No agents found, using direct implementation")
+            return []
+
+        agents = []
+        for agent_file in agents_dir.glob("*.md"):
+            agent_info = self._parse_agent_file(agent_file)
+            if agent_info:
+                agents.append(agent_info)
+
+        if agents:
+            self.logger.info(
+                f"Discovered {len(agents)} agents: {[a['name'] for a in agents]}"
+            )
+        else:
+            self.logger.info("No agents found, using direct implementation")
+
+        return agents
+
+    def _parse_agent_file(self, filepath: Path) -> dict[str, str] | None:
+        """Parse agent file and extract name/description from frontmatter."""
+        try:
+            content = filepath.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+
+        if not content.startswith("---"):
+            return None
+
+        end_idx = content.find("---", 3)
+        if end_idx == -1:
+            return None
+
+        try:
+            frontmatter = yaml.safe_load(content[3:end_idx].strip())
+        except yaml.YAMLError:
+            return None
+
+        if not isinstance(frontmatter, dict):
+            return None
+
+        name = frontmatter.get("name")
+        description = frontmatter.get("description")
+
+        if not name or not description:
+            return None
+
+        return {"name": str(name), "description": str(description)}
+
+    def _format_agents_list(self, agents: list[dict[str, str]]) -> str:
+        """Format agents as markdown list."""
+        if not agents:
+            return ""
+        return "\n".join(f"- **{a['name']}**: {a['description']}" for a in agents)
+
+    def _build_orchestration_section(self, agents: list[dict[str, str]]) -> str:
+        """Build orchestration instructions when agents are available."""
+        if not agents:
+            return ""
+
+        agents_list = self._format_agents_list(agents)
+        return f"""
+## Agent Orchestration
+
+You have access to specialized agents. Delegate task groups to appropriate agents using the Task tool.
+
+### Available Agents
+
+{agents_list}
+
+### Delegation Guidelines
+
+1. **Analyze tasks** - Group related tasks (e.g., all model tasks, all controller tasks)
+2. **Match by capability** - Choose agent whose description aligns with task type
+3. **Delegate via Task tool** - Invoke with clear instructions
+4. **Verify completion** - Ensure agent completed work successfully
+
+### When NOT to Delegate
+
+- Simple tasks that don't match any agent's specialty
+- Tasks requiring cross-cutting changes
+- When you can implement more efficiently yourself
+
+You remain responsible for TASKS.md updates and overall completion.
 """
 
     def parse_output(self, response: ClaudeResponse) -> AgentResult:

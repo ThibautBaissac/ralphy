@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional, Type
@@ -146,14 +147,9 @@ class Orchestrator:
                 self.logger.task_complete(f"Tâche {task_id}")
             else:
                 self.logger.task_complete("Tâche complétée")
-            # Checkpoint task as completed and update task counter
+            # Checkpoint task as completed - let polling thread handle state.json updates
             if task_id:
                 self.state_manager.checkpoint_task(task_id, "completed")
-                completed, total = self._dev_agent_for_queries.count_task_status()
-                self.state_manager.update_tasks(completed, total)
-                # Sync progress display with authoritative file-based count
-                if self._progress_display and self._progress_display.is_active:
-                    self._progress_display.update_tasks(completed, total)
             # Log to journal
             self._journal.record_task_event(event_type, task_id, task_name)
 
@@ -170,6 +166,51 @@ class Orchestrator:
         self._last_cost = cost
         # Log to journal
         self._journal.record_token_update(usage, cost)
+
+    def _start_task_polling(self) -> threading.Event:
+        """Start background thread to poll TASKS.md for progress updates.
+
+        This thread periodically reads TASKS.md to get the authoritative task
+        completion count, which syncs with the in-memory detection counter
+        in ProgressDisplay. This handles cases where:
+        - Detection misses a completion event
+        - File write completes after detection callback
+
+        The polling thread is the primary source for state.json updates,
+        ensuring the file-based count (authoritative) is always persisted.
+
+        Returns:
+            Event to signal the polling thread to stop.
+        """
+        stop_event = threading.Event()
+        last_completed = -1
+
+        def poll_loop() -> None:
+            nonlocal last_completed
+            while not stop_event.is_set():
+                try:
+                    completed, total = self._dev_agent_for_queries.count_task_status()
+                    # Always sync state.json with file-based count (authoritative source)
+                    if total > 0:
+                        self.state_manager.update_tasks(completed, total)
+                    # Only update progress display when count changes (avoid UI churn)
+                    if completed != last_completed and total > 0:
+                        last_completed = completed
+                        if self._progress_display and self._progress_display.is_active:
+                            # Use from_thread=True to skip _refresh() - Rich Live auto-refresh will pick up changes
+                            self._progress_display.update_tasks(completed, total, from_thread=True)
+                except Exception as e:
+                    # Log polling errors for debugging but don't crash
+                    self.logger.debug(f"Task polling error: {e}")
+                stop_event.wait(timeout=1.0)  # Poll every second for faster updates
+
+        thread = threading.Thread(target=poll_loop, daemon=True, name="task-poller")
+        thread.start()
+        return stop_event
+
+    def _stop_task_polling(self, stop_event: threading.Event) -> None:
+        """Signal the task polling thread to stop."""
+        stop_event.set()
 
     def _spec_artifacts_valid(self) -> bool:
         """Vérifie si les artéfacts de la phase SPECIFICATION sont valides.
@@ -279,6 +320,7 @@ class Orchestrator:
         total_tasks: int = 0,
         model: str = "",
         timeout: int = 0,
+        agent_name: str = "",
     ) -> None:
         """Démarre l'affichage de progression pour une phase."""
         # Track phase info for journal end_phase calls
@@ -304,6 +346,8 @@ class Orchestrator:
                 model=model,
                 timeout=timeout,
                 feature_name=self.feature_name,
+                tdd_enabled=self.config.stack.tdd_enabled,
+                agent_name=agent_name,
             )
 
     def _stop_phase_progress(
@@ -527,6 +571,7 @@ class Orchestrator:
             total_tasks=total_tasks,
             model=model,
             timeout=timeout,
+            agent_name=agent_class.name,
         )
 
         # Optional pre-start hook (e.g., restore progress for resumed tasks)
@@ -549,6 +594,18 @@ class Orchestrator:
                 kwargs.update(agent_kwargs)
 
             agent = agent_class(**kwargs)
+
+            # Update progress display with discovered agents for DevAgent
+            if (
+                self._progress_display
+                and self._progress_display.is_active
+                and hasattr(agent, "_discover_agents")
+            ):
+                discovered = agent._discover_agents()
+                if discovered:
+                    self._progress_display.update_available_agents(
+                        [a["name"] for a in discovered]
+                    )
 
             # Run agent with timeout + custom kwargs
             run_args: dict[str, Any] = {"timeout": timeout}
@@ -627,6 +684,7 @@ class Orchestrator:
         - Task resume from checkpoint
         - Progress display with task count
         - Post-run task status update
+        - Background polling for real-time progress sync
         """
         # Determine if we should resume from a specific task
         resume_task_id = self._get_implementation_resume_task()
@@ -650,17 +708,23 @@ class Orchestrator:
             completed, total = dev_agent.count_task_status()
             self.state_manager.update_tasks(completed, total)
 
-        return self._run_agent_phase(
-            phase=Phase.IMPLEMENTATION,
-            phase_name="IMPLEMENTATION",
-            agent_class=DevAgent,
-            timeout=self.config.timeouts.implementation,
-            model=self.config.models.implementation,
-            total_tasks=total_tasks,
-            run_kwargs={"start_from_task": resume_task_id},
-            post_run=on_impl_complete,
-            pre_start=pre_start_hook,
-        )
+        # Start task polling for real-time progress updates
+        polling_stop_event = self._start_task_polling()
+
+        try:
+            return self._run_agent_phase(
+                phase=Phase.IMPLEMENTATION,
+                phase_name="IMPLEMENTATION",
+                agent_class=DevAgent,
+                timeout=self.config.timeouts.implementation,
+                model=self.config.models.implementation,
+                total_tasks=total_tasks,
+                run_kwargs={"start_from_task": resume_task_id},
+                post_run=on_impl_complete,
+                pre_start=pre_start_hook,
+            )
+        finally:
+            self._stop_task_polling(polling_stop_event)
 
     def _run_qa_phase(self) -> bool:
         """Exécute la phase QA."""

@@ -44,10 +44,12 @@ For each task with `pending` status:
 7. **Mark `completed`**: Change status from `in_progress` to `completed` in {{feature_path}}/TASKS.md
 8. **Repeat** for the next task
 {{tdd_instructions}}
-⚠️ **CRITICAL - TASKS.MD UPDATE MANDATORY**:
+{{orchestration_section}}
+## Critical - TASKS.MD Update Mandatory
+
 - You MUST use the Edit tool to modify {{feature_path}}/TASKS.md TWICE per task:
-  - BEFORE coding: `pending` → `in_progress`
-  - AFTER tests: `in_progress` → `completed`
+  - BEFORE coding: `pending` -> `in_progress`
+  - AFTER tests: `in_progress` -> `completed`
 - NEVER start coding without first marking the task as `in_progress`
 - NEVER move to the next task without marking `completed`
 - These updates allow tracking progress and resuming if interrupted
@@ -56,13 +58,13 @@ For each task with `pending` status:
 
 Follow the Rails implementation order:
 
-1. **Migrations** → `rails db:migrate`
-2. **Models** → validations, associations, scopes
-3. **Factories** → FactoryBot for tests
-4. **Policies** → Pundit for authorization
-5. **Controllers** → REST actions + Strong Parameters
-6. **Views** → ERB + Turbo Frames
-7. **Stimulus** → JavaScript controllers
+1. **Migrations** -> `rails db:migrate`
+2. **Models** -> validations, associations, scopes
+3. **Factories** -> FactoryBot for tests
+4. **Policies** -> Pundit for authorization
+5. **Controllers** -> REST actions + Strong Parameters
+6. **Views** -> ERB + Turbo Frames
+7. **Stimulus** -> JavaScript controllers
 
 ## RSpec Conventions
 
@@ -206,29 +208,29 @@ end
 
 ## Instructions
 
-- Process tasks in defined order (migrations → models → controllers → views)
+- Process tasks in defined order (migrations -> models -> controllers -> views)
 - Only move to next task if previous one passes tests
-- **MANDATORY**: Update {{feature_path}}/TASKS.md (status → completed) after EACH completed task
+- **MANDATORY**: Update {{feature_path}}/TASKS.md (status -> completed) after EACH completed task
 - Follow project conventions defined in {{feature_path}}/SPEC.md
 - Use `rubocop -A` after each Ruby file to auto-correct style
 - Write idiomatic Rails code
 - Use Rails helpers (`link_to`, `form_with`, `turbo_frame_tag`, etc.)
 - Handle errors with flash messages
 
-## ⚠️ MANDATORY UPDATE TO {{feature_path}}/TASKS.md
+## Mandatory Update to {{feature_path}}/TASKS.md
 
 You MUST modify `{{feature_path}}/TASKS.md` TWICE per task:
 
 ### 1. BEFORE coding (mark in_progress):
 ```markdown
 ### Task 1.9: [Model - Create Team model]
-- **Status**: in_progress  ← Changed from pending to in_progress
+- **Status**: in_progress  <- Changed from pending to in_progress
 ```
 
 ### 2. AFTER tests pass (mark completed):
 ```markdown
 ### Task 1.9: [Model - Create Team model]
-- **Status**: completed  ← Changed from in_progress to completed
+- **Status**: completed  <- Changed from in_progress to completed
 ```
 
 **STRICT RULES**:

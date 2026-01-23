@@ -84,7 +84,7 @@ Implement the feature as described above.
 # List of prompt files to copy
 PROMPT_FILES = [
     "spec_agent.md",
-    "dev_agent.md",
+    "dev_prompt.md",
     "qa_agent.md",
     "pr_agent.md",
 ]
@@ -112,9 +112,10 @@ def _generate_prompt_header(prompt_file: str) -> str:
     specific_placeholders = {
         "spec_agent.md": """| `{{prd_content}}` | Content of PRD.md |
 """,
-        "dev_agent.md": """| `{{spec_content}}` | Content of SPEC.md |
+        "dev_prompt.md": """| `{{spec_content}}` | Content of SPEC.md |
 | `{{tasks_content}}` | Content of TASKS.md |
 | `{{resume_instruction}}` | Resume instructions (empty if new session) |
+| `{{orchestration_section}}` | Agent orchestration instructions (if agents exist) |
 """,
         "qa_agent.md": """| `{{spec_content}}` | Content of SPEC.md |
 """,
@@ -124,7 +125,8 @@ def _generate_prompt_header(prompt_file: str) -> str:
 """,
     }
 
-    agent_name = prompt_file.replace("_agent.md", "").replace("_", " ").title()
+    # Extract agent name from filename
+    agent_name = prompt_file.replace("_agent.md", "").replace("_prompt.md", "").replace("_", " ").title()
     specific = specific_placeholders.get(prompt_file, "")
 
     return f"""<!--
