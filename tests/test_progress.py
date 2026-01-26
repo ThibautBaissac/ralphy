@@ -6,16 +6,18 @@ import pytest
 from rich.panel import Panel
 from rich.progress import Progress
 
-from ralphy.progress import (
+from ralphy.activity import (
     Activity,
     ActivityType,
     OutputParser,
+    match_agent_name,
+    normalize_agent_name,
+)
+from ralphy.progress import (
     ProgressDisplay,
     ProgressRenderer,
     ProgressState,
     RenderContext,
-    match_agent_name,
-    normalize_agent_name,
 )
 
 

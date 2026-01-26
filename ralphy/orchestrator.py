@@ -18,7 +18,8 @@ from ralphy.constants import (
 )
 from ralphy.journal import WorkflowJournal
 from ralphy.logger import get_logger
-from ralphy.progress import Activity, ActivityType, ProgressDisplay
+from ralphy.activity import Activity, ActivityType
+from ralphy.progress import ProgressDisplay
 from ralphy.state import PHASE_ORDER, Phase, StateManager
 from ralphy.validation import HumanValidator
 
