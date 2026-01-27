@@ -12,13 +12,13 @@ class SpecAgent(BaseAgent):
     """Agent that generates specifications from a PRD."""
 
     name = "spec-agent"
-    prompt_file = "spec_agent.md"
+    prompt_file = "spec-agent.md"
 
     def build_prompt(self) -> str:
         """Builds the prompt with PRD content."""
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template spec_agent.md not found")
+            self.logger.error("Template spec-agent.md not found")
             return ""
 
         prd_content = self.read_feature_file("PRD.md")

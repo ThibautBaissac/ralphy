@@ -72,11 +72,11 @@ class BaseAgent(ABC):
         """Load prompt template from project or package.
 
         Priority order:
-        1. .ralphy/prompts/{prompt_file} (project custom)
-        2. ralphy/prompts/{prompt_file} (package default)
+        1. .claude/agents/{prompt_file} (project custom)
+        2. ralphy/templates/agents/{prompt_file} (package default)
 
         Custom prompts are validated before use. If invalid, the default
-        template is used with a warning.
+        template is used with a warning. YAML frontmatter is stripped.
 
         Results are cached at the class level to avoid repeated disk I/O.
         """
@@ -97,21 +97,51 @@ class BaseAgent(ABC):
         return content
 
     def _load_prompt_from_disk(self) -> str:
-        """Load prompt template from disk (custom or package default)."""
-        # 1. Look in the project
-        local_path = self.project_path / ".ralphy" / "prompts" / self.prompt_file
+        """Load prompt template from disk (custom or package default).
+
+        Priority order:
+        1. .claude/agents/{prompt_file} (project custom)
+        2. ralphy/templates/agents/{prompt_file} (package default)
+
+        Custom prompts are validated before use. If invalid, the default
+        template is used with a warning. YAML frontmatter is stripped
+        from the loaded content.
+        """
+        # 1. Look in the project (.claude/agents/)
+        local_path = self.project_path / ".claude" / "agents" / self.prompt_file
         if local_path.exists():
             content = local_path.read_text(encoding="utf-8")
             if self._validate_prompt(content):
-                return content
+                return self._strip_frontmatter(content)
             self.logger.warn(f"Custom prompt {self.prompt_file} invalid, using default")
 
-        # 2. Fallback to package
+        # 2. Fallback to package (ralphy/templates/agents/)
         try:
-            return resources.files("ralphy.prompts").joinpath(self.prompt_file).read_text(encoding="utf-8")
+            content = resources.files("ralphy.templates.agents").joinpath(self.prompt_file).read_text(encoding="utf-8")
+            return self._strip_frontmatter(content)
         except (FileNotFoundError, TypeError):
             self.logger.error(f"Template {self.prompt_file} not found")
             return ""
+
+    def _strip_frontmatter(self, content: str) -> str:
+        """Strip YAML frontmatter from content if present.
+
+        YAML frontmatter is delimited by '---' at the start and end.
+        This is used for agent metadata (name, description, triggers)
+        but should not be included in the final prompt.
+
+        Args:
+            content: The template content, potentially with frontmatter.
+
+        Returns:
+            Content with frontmatter removed, leading whitespace stripped.
+        """
+        if not content.startswith("---"):
+            return content
+        end_idx = content.find("---", 3)
+        if end_idx == -1:
+            return content
+        return content[end_idx + 3:].lstrip()
 
     @classmethod
     def clear_prompt_cache(cls) -> None:
@@ -194,37 +224,70 @@ class BaseAgent(ABC):
         return True
 
     def _get_tdd_instructions(self) -> str:
-        """Return TDD workflow instructions if enabled, empty string otherwise."""
+        """Return TDD workflow instructions based on heuristics.
+
+        TDD is recommended for certain task types:
+        - New features with business logic
+        - Bug fixes (test reproduces the bug first)
+        - Refactoring (tests ensure behavior preserved)
+
+        TDD is less beneficial for:
+        - Configuration changes
+        - Simple UI adjustments
+        - Documentation updates
+        - Migration scripts
+
+        Returns:
+            TDD instructions string, or empty string if TDD is disabled.
+        """
         if not self.config.stack.tdd_enabled:
             return ""
 
         return """
-## TDD Workflow (MANDATORY)
+## TDD Workflow Guidelines
 
-For each task, follow the RED → GREEN → REFACTOR cycle:
+For tasks that benefit from TDD, follow the RED -> GREEN -> REFACTOR cycle:
 
-### 1. RED: Write Failing Tests First
-- Create/update test file BEFORE writing implementation code
-- Write tests that define the expected behavior
-- Run tests with the test command - verify they FAIL
-- This confirms tests are actually testing something
+### When to Use TDD
 
-### 2. GREEN: Implement Minimal Code
-- Write the minimum code needed to make tests pass
-- Do not add extra features or optimizations yet
-- Run tests - verify they PASS
+**TDD-Friendly Tasks** (write tests first):
+- New features with business logic
+- Bug fixes (test reproduces the bug first)
+- Refactoring (tests ensure behavior preserved)
+- API endpoints and data transformations
 
-### 3. REFACTOR: Improve Code Quality
-- Clean up code while keeping tests green
-- Remove duplication, improve naming, simplify logic
-- Run tests after each refactor to ensure they still pass
-- Run linter/formatter as appropriate
+**Non-TDD Tasks** (implement directly):
+- Configuration changes
+- Simple UI adjustments
+- Documentation updates
+- Migration scripts
+- Dependency updates
 
-### TDD Rules
-- NEVER write implementation code before its test exists
-- NEVER skip the "verify tests fail" step - it catches false positives
+### The TDD Cycle
+
+#### 1. RED: Write Failing Test First
+- Create test that defines expected behavior
+- Run test - verify it FAILS
+- This confirms the test actually tests something
+
+#### 2. GREEN: Implement Minimal Code
+- Write minimum code to make test pass
+- Don't add extra features yet
+- Run test - verify it PASSES
+
+#### 3. REFACTOR: Improve Code Quality
+- Clean up while keeping tests green
+- Remove duplication, improve naming
+- Run tests after each change
+
+### Per-Task Override
+
+If a task in TASKS.md specifies `- **TDD**: true` or `- **TDD**: false`, follow that directive. Otherwise, use your judgment based on the task type.
+
+### TDD Best Practices
 - Keep the RED-GREEN cycle short (minutes, not hours)
 - One test at a time: write one test, make it pass, repeat
+- Test behavior, not implementation details
 """
 
     def read_file(self, filename: str) -> Optional[str]:

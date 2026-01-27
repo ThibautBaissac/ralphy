@@ -1,4 +1,4 @@
-"""Template generation for Ralphy PRD, prompts, and config files."""
+"""Template generation for Ralphy PRD, agents, and config files."""
 
 from ralphy.constants import (
     CB_INACTIVITY_TIMEOUT_SECONDS,
@@ -40,72 +40,13 @@ Implement the feature as described above.
 """
 
 
-# List of prompt files to copy
-PROMPT_FILES = [
-    "spec_agent.md",
-    "dev_prompt.md",
-    "qa_agent.md",
-    "pr_agent.md",
+# List of agent files to copy
+AGENT_FILES = [
+    "spec-agent.md",
+    "dev-agent.md",
+    "qa-agent.md",
+    "pr-agent.md",
 ]
-
-
-def generate_prompt_header(prompt_file: str) -> str:
-    """Generates a header documenting available placeholders for a prompt.
-
-    Args:
-        prompt_file: Prompt file name (e.g., spec_agent.md)
-
-    Returns:
-        Markdown header with placeholder documentation.
-    """
-    # Placeholders common to all prompts
-    common_placeholders = """
-| Placeholder | Description |
-|-------------|-------------|
-| `{{project_name}}` | Project name |
-| `{{language}}` | Tech stack (from config.yaml) |
-| `{{test_command}}` | Test command (from config.yaml) |
-"""
-
-    # Agent-specific placeholders
-    specific_placeholders = {
-        "spec_agent.md": """| `{{prd_content}}` | Content of PRD.md |
-""",
-        "dev_prompt.md": """| `{{spec_content}}` | Content of SPEC.md |
-| `{{tasks_content}}` | Content of TASKS.md |
-| `{{resume_instruction}}` | Resume instructions (empty if new session) |
-| `{{orchestration_section}}` | Agent orchestration instructions (if agents exist) |
-""",
-        "qa_agent.md": """| `{{spec_content}}` | Content of SPEC.md |
-""",
-        "pr_agent.md": """| `{{branch_name}}` | Branch name to create |
-| `{{qa_report}}` | QA report content |
-| `{{spec_content}}` | Content of SPEC.md |
-""",
-    }
-
-    # Extract agent name from filename
-    agent_name = prompt_file.replace("_agent.md", "").replace("_prompt.md", "").replace("_", " ").title()
-    specific = specific_placeholders.get(prompt_file, "")
-
-    return f"""<!--
-=============================================================================
-CUSTOM PROMPT TEMPLATE - {agent_name} Agent
-=============================================================================
-
-This file is a custom prompt template for Ralphy.
-Modify it to adapt agent behavior to your stack/project.
-
-IMPORTANT: This prompt MUST contain the "EXIT_SIGNAL" instruction so
-the agent can signal the end of its execution.
-
-Available placeholders (replaced automatically at runtime):
-{common_placeholders}{specific}
-Documentation: https://github.com/your-org/ralphy#custom-prompts
-=============================================================================
--->
-
-"""
 
 
 def generate_config_template() -> str:

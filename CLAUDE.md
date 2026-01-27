@@ -77,8 +77,8 @@ ralphy abort my-feature
 # Reset workflow state
 ralphy reset my-feature
 
-# Initialize custom prompt templates
-ralphy init-prompts /path/to/project
+# Initialize custom agent templates
+ralphy init-agents /path/to/project
 ```
 
 ### Development Tools
@@ -101,8 +101,15 @@ docs/features/<feature-name>/
 ├── QA_REPORT.md        # Quality analysis report
 └── .ralphy/
     ├── state.json      # Feature-specific workflow state
-    ├── config.yaml     # Optional feature-specific config
-    └── prompts/        # Optional custom prompts
+    └── config.yaml     # Optional feature-specific config
+
+# Project-wide custom agents (optional)
+.claude/
+└── agents/             # Custom agent templates
+    ├── spec-agent.md
+    ├── dev-agent.md
+    ├── qa-agent.md
+    └── pr-agent.md
 ```
 
 **Feature naming**: Must match pattern `^[a-zA-Z0-9][a-zA-Z0-9_-]*$`
@@ -148,9 +155,10 @@ Central workflow controller that:
 Abstract base class for all agents implementing:
 - **Retry logic**: Configurable retries on timeout/errors (not on EXIT_SIGNAL failures)
 - **Circuit breaker integration**: Monitors agent execution for infinite loops/stagnation
-- **Template-based prompts**: Loads prompts from `ralphy/prompts/*.md`
+- **Template-based prompts**: Loads agents from `.claude/agents/` or `ralphy/templates/agents/`
 - **Exit signal detection**: Agents must emit `EXIT_SIGNAL: true` when complete
 - **Token usage tracking**: Callbacks for real-time token consumption monitoring
+- **Frontmatter stripping**: YAML frontmatter is stripped before prompt is used
 
 **Agent lifecycle**: `build_prompt()` → `ClaudeRunner.run()` → `parse_output()` → `AgentResult`
 
@@ -348,26 +356,47 @@ models:
 Supported values: `sonnet`, `opus`, `haiku`, or full model names like `claude-sonnet-4-5-20250929`.
 Default: All phases use `sonnet` if not specified.
 
-### Custom Prompt Templates
+### Custom Agent Templates
 
-Ralphy supports custom prompts to adapt agent behavior for your tech stack. Prompts are loaded with priority:
-1. `.ralphy/prompts/{agent}.md` (project-specific)
-2. `ralphy/prompts/{agent}.md` (package defaults)
+Ralphy supports custom agents to adapt behavior for your tech stack. Agents are loaded with priority:
+1. `.claude/agents/{agent}.md` (project-specific)
+2. `ralphy/templates/agents/{agent}.md` (package defaults)
 
-**Initialize custom prompts:**
+**Initialize custom agents:**
 ```bash
-# Copy default prompts to your project
-ralphy init-prompts /path/to/project
+# Copy default agents to your project
+ralphy init-agents /path/to/project
 
-# Overwrite existing custom prompts
-ralphy init-prompts --force /path/to/project
+# Overwrite existing custom agents
+ralphy init-agents --force /path/to/project
 ```
 
-This creates `.ralphy/prompts/` with all 4 agent templates:
-- `spec_agent.md` - Specification generation
-- `dev_agent.md` - Implementation
-- `qa_agent.md` - Quality assurance
-- `pr_agent.md` - Pull request creation
+This creates `.claude/agents/` with all 4 agent templates:
+- `spec-agent.md` - Specification generation
+- `dev-agent.md` - Implementation
+- `qa-agent.md` - Quality assurance
+- `pr-agent.md` - Pull request creation
+
+**Agent file format:**
+
+Agent files use YAML frontmatter for metadata, followed by the prompt content:
+
+```markdown
+---
+name: spec-agent
+description: Generates technical specifications from a PRD
+triggers: [specification, spec, architecture]
+tools: [Read, Write, Glob, Grep]
+---
+
+# Spec Agent
+
+Your prompt content here...
+
+EXIT_SIGNAL: true
+```
+
+The frontmatter is automatically stripped before the prompt is sent to Claude.
 
 **Available placeholders** (replaced at runtime):
 
@@ -377,17 +406,19 @@ This creates `.ralphy/prompts/` with all 4 agent templates:
 | `{{language}}` | Tech stack from config | All |
 | `{{test_command}}` | Test command from config | spec, dev |
 | `{{feature_path}}` | Relative path to feature directory (e.g., "docs/features/my-feature") | All |
+| `{{tdd_instructions}}` | TDD workflow instructions (if enabled) | dev |
 | `{{prd_content}}` | PRD.md content | spec |
 | `{{spec_content}}` | SPEC.md content | dev, qa, pr |
 | `{{tasks_content}}` | TASKS.md content | dev |
 | `{{resume_instruction}}` | Resume instructions | dev |
+| `{{orchestration_section}}` | Sub-agent orchestration (if agents exist) | dev |
 | `{{branch_name}}` | Branch name | pr |
 | `{{qa_report}}` | QA report content | pr |
 
-**Requirements for custom prompts:**
+**Requirements for custom agents:**
 - Must contain `EXIT_SIGNAL` instruction (required for agent completion detection)
 - Must be at least 100 characters long
-- Invalid prompts fall back to defaults with a warning
+- Invalid agents fall back to defaults with a warning
 
 ### Adding Circuit Breaker Trigger
 1. Add trigger type to `TriggerType` enum in `circuit_breaker.py`

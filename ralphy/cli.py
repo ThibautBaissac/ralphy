@@ -22,9 +22,8 @@ from ralphy.logger import get_logger
 from ralphy.orchestrator import Orchestrator
 from ralphy.state import Phase, StateManager
 from ralphy.templates import (
-    PROMPT_FILES,
+    AGENT_FILES,
     generate_config_template,
-    generate_prompt_header,
     generate_quick_prd,
 )
 
@@ -348,65 +347,61 @@ def reset(feature_name: str):
         logger.info("État réinitialisé")
 
 
-@main.command("init-prompts")
+@main.command("init-agents")
 @click.argument("project_path", type=click.Path(exists=True, file_okay=False, resolve_path=True), required=False)
-@click.option("--force", is_flag=True, help="Écrase les prompts existants")
-def init_prompts(project_path: str = None, force: bool = False):
-    """Initialise les templates de prompts personnalisés.
+@click.option("--force", is_flag=True, help="Overwrite existing agent files")
+def init_agents(project_path: str = None, force: bool = False):
+    """Initialize custom agent templates.
 
-    Copie les templates de prompts par défaut dans .ralphy/prompts/ du projet.
-    Ces templates peuvent ensuite être modifiés pour adapter Ralphy à votre stack.
+    Copies default agent templates to .claude/agents/ in the project.
+    These templates can be modified to adapt Ralphy to your tech stack.
 
-    PROJECT_PATH: Chemin vers le projet (défaut: répertoire courant)
+    PROJECT_PATH: Path to the project (default: current directory)
 
-    Utilisez --force pour écraser les prompts existants.
+    Use --force to overwrite existing agent files.
     """
     project = Path(project_path) if project_path else Path.cwd()
     logger = get_logger()
 
-    # Crée le répertoire .ralphy/prompts/ s'il n'existe pas
-    prompts_dir = project / ".ralphy" / "prompts"
-    prompts_dir.mkdir(parents=True, exist_ok=True)
+    # Create .claude/agents/ directory if it doesn't exist
+    agents_dir = project / ".claude" / "agents"
+    agents_dir.mkdir(parents=True, exist_ok=True)
 
     copied = 0
     skipped = 0
 
-    for prompt_file in PROMPT_FILES:
-        dest_path = prompts_dir / prompt_file
+    for agent_file in AGENT_FILES:
+        dest_path = agents_dir / agent_file
 
-        # Skip si fichier existe et pas --force
+        # Skip if file exists and --force not specified
         if dest_path.exists() and not force:
-            logger.warn(f"Skipping {prompt_file} (exists, use --force to overwrite)")
+            logger.warn(f"Skipping {agent_file} (exists, use --force to overwrite)")
             skipped += 1
             continue
 
-        # Charge le contenu depuis le package
+        # Load content from package
         try:
-            original_content = resources.files("ralphy.prompts").joinpath(prompt_file).read_text(encoding="utf-8")
+            content = resources.files("ralphy.templates.agents").joinpath(agent_file).read_text(encoding="utf-8")
         except (FileNotFoundError, TypeError):
-            logger.error(f"Template {prompt_file} not found in package")
+            logger.error(f"Template {agent_file} not found in package")
             continue
 
-        # Ajoute le header documentant les placeholders
-        header = generate_prompt_header(prompt_file)
-        content = header + original_content
-
-        # Écrit le fichier
+        # Write the file (agents include their own documentation in frontmatter)
         dest_path.write_text(content, encoding="utf-8")
-        logger.info(f"Created {prompt_file}")
+        logger.info(f"Created {agent_file}")
         copied += 1
 
-    # Résumé
+    # Summary
     console.print()
     if copied > 0:
-        console.print(f"[green]✓[/green] {copied} prompt(s) copied to {prompts_dir}")
+        console.print(f"[green]✓[/green] {copied} agent(s) copied to {agents_dir}")
     if skipped > 0:
-        console.print(f"[yellow]![/yellow] {skipped} prompt(s) skipped (use --force to overwrite)")
+        console.print(f"[yellow]![/yellow] {skipped} agent(s) skipped (use --force to overwrite)")
 
     if copied > 0:
         console.print()
         console.print("[dim]Edit these files to customize Ralphy for your project.[/dim]")
-        console.print("[dim]Remember: prompts must contain EXIT_SIGNAL instruction.[/dim]")
+        console.print("[dim]Remember: agents must contain EXIT_SIGNAL instruction.[/dim]")
 
 
 @main.command("init-config")

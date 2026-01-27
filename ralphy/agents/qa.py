@@ -42,13 +42,13 @@ class QAAgent(BaseAgent):
     """Agent that analyzes code quality and generates a report."""
 
     name = "qa-agent"
-    prompt_file = "qa_agent.md"
+    prompt_file = "qa-agent.md"
 
     def build_prompt(self) -> str:
         """Builds the prompt for QA analysis."""
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template qa_agent.md not found")
+            self.logger.error("Template qa-agent.md not found")
             return ""
 
         return self._apply_common_placeholders(template)

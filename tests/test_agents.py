@@ -16,7 +16,7 @@ class ConcreteAgent(BaseAgent):
     """Concrete agent for testing."""
 
     name = "test-agent"
-    prompt_file = "spec_agent.md"  # Use real prompt file for fallback tests
+    prompt_file = "spec-agent.md"  # Use real agent file for fallback tests
 
     def build_prompt(self) -> str:
         return "Test prompt"
@@ -308,23 +308,28 @@ class TestDevAgentResume:
 
 
 class TestCustomPromptLoading:
-    """Tests pour le chargement des prompts personnalisés."""
+    """Tests for loading custom agent templates."""
 
     @pytest.fixture
     def temp_project(self):
-        """Crée un projet temporaire."""
+        """Creates a temporary project."""
         with tempfile.TemporaryDirectory() as tmpdir:
             project_path = Path(tmpdir)
             (project_path / "PRD.md").write_text("# Test PRD")
             yield project_path
 
     def test_loads_custom_prompt_when_present(self, temp_project):
-        """Test que load_prompt_template charge un prompt custom valide."""
-        # Crée un prompt custom valide
-        prompts_dir = temp_project / ".ralphy" / "prompts"
-        prompts_dir.mkdir(parents=True)
+        """Test that load_prompt_template loads a valid custom agent."""
+        # Create a valid custom agent
+        agents_dir = temp_project / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
 
-        custom_content = """# Custom Spec Agent Prompt
+        custom_content = """---
+name: spec-agent
+description: Custom spec agent for testing
+---
+
+# Custom Spec Agent Prompt
 
 This is a custom prompt for the spec agent.
 It must be at least 100 characters long to pass validation.
@@ -332,37 +337,45 @@ It also needs to contain the EXIT_SIGNAL instruction.
 
 When done, output EXIT_SIGNAL: true to indicate completion.
 """
-        (prompts_dir / "spec_agent.md").write_text(custom_content)
+        (agents_dir / "spec-agent.md").write_text(custom_content)
 
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
         loaded = agent.load_prompt_template()
 
-        assert loaded == custom_content
+        # Should strip frontmatter
+        assert "---" not in loaded
+        assert "name: spec-agent" not in loaded
+        assert "# Custom Spec Agent Prompt" in loaded
 
     def test_falls_back_to_default_when_no_custom(self, temp_project):
-        """Test que load_prompt_template utilise le défaut si pas de custom."""
+        """Test that load_prompt_template uses default if no custom."""
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
         loaded = agent.load_prompt_template()
 
-        # Should load from package (spec_agent.md exists in ralphy/prompts/)
+        # Should load from package (spec-agent.md exists in ralphy/templates/agents/)
         assert len(loaded) > 0
         assert "EXIT_SIGNAL" in loaded
 
     def test_validates_custom_prompt_has_exit_signal(self, temp_project):
-        """Test que le prompt custom est rejeté si EXIT_SIGNAL manque."""
-        prompts_dir = temp_project / ".ralphy" / "prompts"
-        prompts_dir.mkdir(parents=True)
+        """Test that custom agent is rejected if EXIT_SIGNAL is missing."""
+        agents_dir = temp_project / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
 
-        # Prompt sans EXIT_SIGNAL (mais assez long)
-        invalid_content = """# Custom Spec Agent Prompt
+        # Agent without EXIT_SIGNAL (but long enough)
+        invalid_content = """---
+name: spec-agent
+description: Invalid spec agent
+---
+
+# Custom Spec Agent Prompt
 
 This is a custom prompt that is missing the required exit signal.
 It has more than 100 characters but the validation should fail
 because it doesn't tell the agent how to signal completion.
 """
-        (prompts_dir / "spec_agent.md").write_text(invalid_content)
+        (agents_dir / "spec-agent.md").write_text(invalid_content)
 
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
@@ -370,16 +383,16 @@ because it doesn't tell the agent how to signal completion.
 
         # Should fallback to default (from package)
         assert "EXIT_SIGNAL" in loaded
-        assert loaded != invalid_content
+        assert "Invalid spec agent" not in loaded
 
     def test_validates_custom_prompt_not_empty(self, temp_project):
-        """Test que le prompt custom est rejeté si vide ou trop court."""
-        prompts_dir = temp_project / ".ralphy" / "prompts"
-        prompts_dir.mkdir(parents=True)
+        """Test that custom agent is rejected if empty or too short."""
+        agents_dir = temp_project / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
 
-        # Prompt trop court
+        # Agent too short
         short_content = "Short prompt EXIT_SIGNAL"
-        (prompts_dir / "spec_agent.md").write_text(short_content)
+        (agents_dir / "spec-agent.md").write_text(short_content)
 
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
@@ -390,11 +403,11 @@ because it doesn't tell the agent how to signal completion.
         assert loaded != short_content
 
     def test_validates_custom_prompt_empty_file(self, temp_project):
-        """Test que le prompt custom est rejeté si fichier vide."""
-        prompts_dir = temp_project / ".ralphy" / "prompts"
-        prompts_dir.mkdir(parents=True)
+        """Test that custom agent is rejected if file is empty."""
+        agents_dir = temp_project / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
 
-        (prompts_dir / "spec_agent.md").write_text("")
+        (agents_dir / "spec-agent.md").write_text("")
 
         config = ProjectConfig()
         agent = ConcreteAgent(temp_project, config)
@@ -764,7 +777,7 @@ class TestTDDInstructions:
         assert "RED" in instructions
         assert "GREEN" in instructions
         assert "REFACTOR" in instructions
-        assert "Write Failing Tests First" in instructions
+        assert "Write Failing Test First" in instructions
 
     def test_tdd_placeholder_replacement_disabled(self, temp_project):
         """Test that {{tdd_instructions}} is replaced with empty string when disabled."""
@@ -791,3 +804,89 @@ class TestTDDInstructions:
         assert "{{tdd_instructions}}" not in result
         assert "Before" in result
         assert "After" in result
+
+
+class TestStripFrontmatter:
+    """Tests for the _strip_frontmatter method."""
+
+    @pytest.fixture
+    def temp_project(self):
+        """Creates a temporary project."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_strips_valid_frontmatter(self, temp_project):
+        """Test that valid YAML frontmatter is stripped."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        content = """---
+name: test-agent
+description: A test agent
+---
+
+# Agent Content
+
+This is the main content.
+"""
+        result = agent._strip_frontmatter(content)
+        assert "---" not in result
+        assert "name: test-agent" not in result
+        assert "# Agent Content" in result
+        assert "This is the main content." in result
+
+    def test_returns_content_without_frontmatter(self, temp_project):
+        """Test that content without frontmatter is returned as-is."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        content = """# Agent Content
+
+This is content without frontmatter.
+"""
+        result = agent._strip_frontmatter(content)
+        assert result == content
+
+    def test_handles_incomplete_frontmatter(self, temp_project):
+        """Test that content with incomplete frontmatter is returned as-is."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        # No closing ---
+        content = """---
+name: test-agent
+description: A test agent
+
+# Agent Content
+"""
+        result = agent._strip_frontmatter(content)
+        assert result == content
+
+    def test_strips_leading_whitespace_after_frontmatter(self, temp_project):
+        """Test that leading whitespace is stripped after frontmatter removal."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        content = """---
+name: test-agent
+---
+
+
+# Agent Content
+"""
+        result = agent._strip_frontmatter(content)
+        assert result.startswith("# Agent Content")
+
+    def test_empty_frontmatter(self, temp_project):
+        """Test handling of empty frontmatter block."""
+        config = ProjectConfig()
+        agent = ConcreteAgent(temp_project, config)
+
+        content = """---
+---
+
+# Agent Content
+"""
+        result = agent._strip_frontmatter(content)
+        assert "---" not in result
+        assert "# Agent Content" in result

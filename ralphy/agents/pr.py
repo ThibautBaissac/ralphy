@@ -13,7 +13,7 @@ class PRAgent(BaseAgent):
     """Agent that creates the Pull Request."""
 
     name = "pr-agent"
-    prompt_file = "pr_agent.md"
+    prompt_file = "pr-agent.md"
 
     def __init__(
         self,
@@ -43,7 +43,7 @@ class PRAgent(BaseAgent):
         """Builds the prompt for PR creation."""
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template pr_agent.md not found")
+            self.logger.error("Template pr-agent.md not found")
             return ""
 
         qa_report = self.read_feature_file("QA_REPORT.md") or "Rapport QA non disponible"

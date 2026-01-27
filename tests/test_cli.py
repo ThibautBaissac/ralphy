@@ -257,105 +257,108 @@ class TestVersionOption:
         assert "ralphy" in result.output.lower()
 
 
-class TestInitPromptsCommand:
-    """Tests for the init-prompts command."""
+class TestInitAgentsCommand:
+    """Tests for the init-agents command."""
 
-    def test_init_prompts_creates_directory(self, runner, tmp_path):
-        """Test that init-prompts creates .ralphy/prompts/ directory."""
-        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+    def test_init_agents_creates_directory(self, runner, tmp_path):
+        """Test that init-agents creates .claude/agents/ directory."""
+        result = runner.invoke(main, ["init-agents", str(tmp_path)])
         assert result.exit_code == 0
 
-        prompts_dir = tmp_path / ".ralphy" / "prompts"
-        assert prompts_dir.exists()
-        assert prompts_dir.is_dir()
+        agents_dir = tmp_path / ".claude" / "agents"
+        assert agents_dir.exists()
+        assert agents_dir.is_dir()
 
-    def test_init_prompts_copies_all_prompts(self, runner, tmp_path):
-        """Test that init-prompts copies all 4 prompt files."""
-        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+    def test_init_agents_copies_all_agents(self, runner, tmp_path):
+        """Test that init-agents copies all 4 agent files."""
+        result = runner.invoke(main, ["init-agents", str(tmp_path)])
         assert result.exit_code == 0
 
-        prompts_dir = tmp_path / ".ralphy" / "prompts"
-        expected_files = ["spec_agent.md", "dev_prompt.md", "qa_agent.md", "pr_agent.md"]
+        agents_dir = tmp_path / ".claude" / "agents"
+        expected_files = ["spec-agent.md", "dev-agent.md", "qa-agent.md", "pr-agent.md"]
 
         for filename in expected_files:
-            prompt_file = prompts_dir / filename
-            assert prompt_file.exists(), f"{filename} should exist"
-            content = prompt_file.read_text()
-            # Should have header with placeholder documentation
-            assert "CUSTOM PROMPT TEMPLATE" in content
-            assert "Placeholder" in content
-            # Should have EXIT_SIGNAL (from original content)
+            agent_file = agents_dir / filename
+            assert agent_file.exists(), f"{filename} should exist"
+            content = agent_file.read_text()
+            # Should have YAML frontmatter
+            assert content.startswith("---")
+            assert "name:" in content
+            assert "description:" in content
+            # Should have EXIT_SIGNAL
             assert "EXIT_SIGNAL" in content
 
-    def test_init_prompts_does_not_overwrite_without_force(self, runner, tmp_path):
-        """Test that init-prompts doesn't overwrite existing files without --force."""
+    def test_init_agents_does_not_overwrite_without_force(self, runner, tmp_path):
+        """Test that init-agents doesn't overwrite existing files without --force."""
         # Create directory and one existing file
-        prompts_dir = tmp_path / ".ralphy" / "prompts"
-        prompts_dir.mkdir(parents=True)
-        existing_content = "# My custom prompt EXIT_SIGNAL preserved"
-        (prompts_dir / "spec_agent.md").write_text(existing_content)
+        agents_dir = tmp_path / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
+        existing_content = "# My custom agent EXIT_SIGNAL preserved"
+        (agents_dir / "spec-agent.md").write_text(existing_content)
 
-        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+        result = runner.invoke(main, ["init-agents", str(tmp_path)])
         assert result.exit_code == 0
 
-        # spec_agent.md should not be overwritten
-        assert (prompts_dir / "spec_agent.md").read_text() == existing_content
+        # spec-agent.md should not be overwritten
+        assert (agents_dir / "spec-agent.md").read_text() == existing_content
 
         # Other files should be created
-        assert (prompts_dir / "dev_prompt.md").exists()
-        assert (prompts_dir / "qa_agent.md").exists()
-        assert (prompts_dir / "pr_agent.md").exists()
+        assert (agents_dir / "dev-agent.md").exists()
+        assert (agents_dir / "qa-agent.md").exists()
+        assert (agents_dir / "pr-agent.md").exists()
 
         # Output should mention skipped file
         assert "skipping" in result.output.lower() or "skip" in result.output.lower()
 
-    def test_init_prompts_force_overwrites(self, runner, tmp_path):
-        """Test that init-prompts --force overwrites existing files."""
+    def test_init_agents_force_overwrites(self, runner, tmp_path):
+        """Test that init-agents --force overwrites existing files."""
         # Create directory and one existing file
-        prompts_dir = tmp_path / ".ralphy" / "prompts"
-        prompts_dir.mkdir(parents=True)
-        existing_content = "# My custom prompt that will be overwritten"
-        (prompts_dir / "spec_agent.md").write_text(existing_content)
+        agents_dir = tmp_path / ".claude" / "agents"
+        agents_dir.mkdir(parents=True)
+        existing_content = "# My custom agent that will be overwritten"
+        (agents_dir / "spec-agent.md").write_text(existing_content)
 
-        result = runner.invoke(main, ["init-prompts", "--force", str(tmp_path)])
+        result = runner.invoke(main, ["init-agents", "--force", str(tmp_path)])
         assert result.exit_code == 0
 
-        # spec_agent.md should be overwritten
-        new_content = (prompts_dir / "spec_agent.md").read_text()
+        # spec-agent.md should be overwritten
+        new_content = (agents_dir / "spec-agent.md").read_text()
         assert new_content != existing_content
-        assert "CUSTOM PROMPT TEMPLATE" in new_content
+        assert "---" in new_content  # YAML frontmatter
 
-    def test_init_prompts_default_path(self, runner, tmp_path, monkeypatch):
-        """Test that init-prompts uses current directory if no path given."""
+    def test_init_agents_default_path(self, runner, tmp_path, monkeypatch):
+        """Test that init-agents uses current directory if no path given."""
         # Change to tmp_path
         monkeypatch.chdir(tmp_path)
 
-        result = runner.invoke(main, ["init-prompts"])
+        result = runner.invoke(main, ["init-agents"])
         assert result.exit_code == 0
 
-        prompts_dir = tmp_path / ".ralphy" / "prompts"
-        assert prompts_dir.exists()
-        assert (prompts_dir / "spec_agent.md").exists()
+        agents_dir = tmp_path / ".claude" / "agents"
+        assert agents_dir.exists()
+        assert (agents_dir / "spec-agent.md").exists()
 
-    def test_init_prompts_adds_header_with_placeholders(self, runner, tmp_path):
-        """Test that init-prompts adds header documenting placeholders."""
-        result = runner.invoke(main, ["init-prompts", str(tmp_path)])
+    def test_init_agents_has_placeholders(self, runner, tmp_path):
+        """Test that init-agents creates files with placeholders."""
+        result = runner.invoke(main, ["init-agents", str(tmp_path)])
         assert result.exit_code == 0
 
-        # Check spec_agent.md has spec-specific placeholders
-        spec_content = (tmp_path / ".ralphy" / "prompts" / "spec_agent.md").read_text()
+        agents_dir = tmp_path / ".claude" / "agents"
+
+        # Check spec-agent.md has spec-specific placeholders
+        spec_content = (agents_dir / "spec-agent.md").read_text()
         assert "{{prd_content}}" in spec_content
         assert "{{project_name}}" in spec_content
 
-        # Check dev_prompt.md has dev-specific placeholders
-        dev_content = (tmp_path / ".ralphy" / "prompts" / "dev_prompt.md").read_text()
+        # Check dev-agent.md has dev-specific placeholders
+        dev_content = (agents_dir / "dev-agent.md").read_text()
         assert "{{spec_content}}" in dev_content
         assert "{{tasks_content}}" in dev_content
         assert "{{resume_instruction}}" in dev_content
         assert "{{orchestration_section}}" in dev_content
 
-        # Check pr_agent.md has pr-specific placeholders
-        pr_content = (tmp_path / ".ralphy" / "prompts" / "pr_agent.md").read_text()
+        # Check pr-agent.md has pr-specific placeholders
+        pr_content = (agents_dir / "pr-agent.md").read_text()
         assert "{{branch_name}}" in pr_content
         assert "{{qa_report}}" in pr_content
 

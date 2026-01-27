@@ -14,7 +14,7 @@ class DevAgent(BaseAgent):
     """Agent that implements code according to TASKS.md."""
 
     name = "dev-agent"
-    prompt_file = "dev_prompt.md"
+    prompt_file = "dev-agent.md"
 
     def build_prompt(self, start_from_task: Optional[str] = None) -> str:
         """Builds the prompt with specs and tasks.
@@ -25,7 +25,7 @@ class DevAgent(BaseAgent):
         """
         template = self.load_prompt_template()
         if not template:
-            self.logger.error("Template dev_prompt.md not found")
+            self.logger.error("Template dev-agent.md not found")
             return ""
 
         spec_content = self.read_feature_file("SPEC.md")
