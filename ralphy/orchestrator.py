@@ -364,7 +364,6 @@ class Orchestrator:
                 model=model,
                 timeout=timeout,
                 feature_name=self.feature_name,
-                tdd_enabled=self.config.stack.tdd_enabled,
                 agent_name=agent_name,
             )
 

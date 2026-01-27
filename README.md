@@ -183,19 +183,6 @@ You are a backend specialist...
 
 The dev-agent will delegate backend tasks to this agent via Claude's Task tool.
 
-## TDD Mode
-
-Enable test-driven development in your config:
-
-```yaml
-stack:
-  tdd_enabled: true
-```
-
-The dev-agent will follow RED-GREEN-REFACTOR: write failing tests first, implement minimal code to pass, then refactor.
-
-**Note**: TDD instructions apply to the dev-agent directly. If you use agent orchestration, delegated agents won't automatically inherit TDD mode - add TDD instructions to your custom agent prompts in `.claude/agents/` if needed.
-
 ## Writing Good PRDs
 
 1. **Be specific** - "Add login" is vague; "Add OAuth2 login with Google" is clear

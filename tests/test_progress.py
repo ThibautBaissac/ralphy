@@ -369,23 +369,20 @@ class TestRenderContext:
         assert context.tasks_task_id is None
 
 
-class TestProgressStateTddAndAgent:
-    """Tests for TDD and agent fields in ProgressState."""
+class TestProgressStateAgent:
+    """Tests for agent fields in ProgressState."""
 
-    def test_progress_state_includes_tdd_field(self):
-        """Test that ProgressState includes TDD and agent fields."""
+    def test_progress_state_includes_agent_field(self):
+        """Test that ProgressState includes agent fields."""
         state = ProgressState(
             phase_name="IMPLEMENTATION",
-            tdd_enabled=True,
             agent_name="dev-agent",
         )
-        assert state.tdd_enabled is True
         assert state.agent_name == "dev-agent"
 
-    def test_progress_state_tdd_defaults_to_false(self):
-        """Test that tdd_enabled defaults to False."""
+    def test_progress_state_agent_defaults_to_empty(self):
+        """Test that agent_name defaults to empty."""
         state = ProgressState()
-        assert state.tdd_enabled is False
         assert state.agent_name == ""
         assert state.available_agents == []
 
@@ -400,28 +397,18 @@ class TestProgressStateTddAndAgent:
         assert len(state.available_agents) == 3
 
 
-class TestProgressDisplayTddAndAgent:
-    """Tests for TDD and agent parameters in ProgressDisplay.start()."""
+class TestProgressDisplayAgent:
+    """Tests for agent parameters in ProgressDisplay.start()."""
 
-    def test_start_with_tdd_enabled(self):
-        """Test start() with TDD enabled."""
+    def test_start_with_agent_name(self):
+        """Test start() with agent name."""
         display = ProgressDisplay()
         display.start(
             "IMPLEMENTATION",
             total_tasks=5,
-            tdd_enabled=True,
             agent_name="dev-agent",
         )
-        assert display._state.tdd_enabled is True
         assert display._state.agent_name == "dev-agent"
-        display.stop()
-
-    def test_start_with_tdd_disabled(self):
-        """Test start() with TDD disabled (default)."""
-        display = ProgressDisplay()
-        display.start("SPECIFICATION", total_tasks=3, agent_name="spec-agent")
-        assert display._state.tdd_enabled is False
-        assert display._state.agent_name == "spec-agent"
         display.stop()
 
     def test_start_with_available_agents(self):
@@ -454,16 +441,15 @@ class TestProgressDisplayTddAndAgent:
         display.stop()
 
 
-class TestProgressRendererTddAndAgent:
-    """Tests for TDD and agent rendering in ProgressRenderer."""
+class TestProgressRendererAgent:
+    """Tests for agent rendering in ProgressRenderer."""
 
-    def test_render_shows_agent_and_tdd_enabled(self):
-        """Test rendering with agent name and TDD enabled."""
+    def test_render_shows_agent(self):
+        """Test rendering with agent name."""
         renderer = ProgressRenderer()
         state = ProgressState(
             phase_name="IMPLEMENTATION",
             agent_name="dev-agent",
-            tdd_enabled=True,
         )
         phase_progress = Progress()
         phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=0)
@@ -502,12 +488,11 @@ class TestProgressRendererTddAndAgent:
         assert result is not None
 
     def test_render_without_agent_name_skips_line(self):
-        """Test that agent/TDD line is skipped when agent_name is empty."""
+        """Test that agent line is skipped when agent_name is empty."""
         renderer = ProgressRenderer()
         state = ProgressState(
             phase_name="IMPLEMENTATION",
             agent_name="",  # No agent name
-            tdd_enabled=True,
         )
         phase_progress = Progress()
         phase_task_id = phase_progress.add_task("IMPLEMENTATION", total=100, completed=0)

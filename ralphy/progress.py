@@ -46,8 +46,7 @@ class ProgressState:
     # Token usage tracking
     token_usage: Optional[TokenUsage] = None
     total_cost_usd: float = 0.0
-    # TDD and agent info
-    tdd_enabled: bool = False
+    # Agent info
     agent_name: str = ""
     available_agents: list[str] = field(default_factory=list)
     delegated_from: Optional[str] = None  # Original agent if delegation occurred
@@ -127,7 +126,7 @@ class ProgressRenderer:
             info_line.append(state.model_name, style="bold magenta")
         elements.append(info_line)
 
-        # Agent and TDD status line
+        # Agent status line
         if state.agent_name:
             agent_line = Text()
             agent_line.append("Agent: ", style="dim")
@@ -137,11 +136,6 @@ class ProgressRenderer:
                 agent_line.append(f" (via {state.delegated_from})", style="dim italic")
             elif state.available_agents:
                 agent_line.append(f" (+{len(state.available_agents)} available)", style="dim")
-            agent_line.append("  TDD: ", style="dim")
-            if state.tdd_enabled:
-                agent_line.append("enabled", style="green bold")
-            else:
-                agent_line.append("disabled", style="dim")
             elements.append(agent_line)
 
         # Elapsed time and timeout line
@@ -271,7 +265,6 @@ class ProgressDisplay:
         model: str = "",
         timeout: int = 0,
         feature_name: str = "",
-        tdd_enabled: bool = False,
         agent_name: str = "",
         available_agents: Optional[list[str]] = None,
     ) -> None:
@@ -284,7 +277,6 @@ class ProgressDisplay:
                 phase_started_at=datetime.now(),
                 phase_timeout=timeout,
                 feature_name=feature_name,
-                tdd_enabled=tdd_enabled,
                 agent_name=agent_name,
                 available_agents=available_agents or [],
                 detected_completed=0,

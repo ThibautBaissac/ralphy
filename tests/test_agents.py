@@ -757,19 +757,9 @@ class TestTDDInstructions:
         with tempfile.TemporaryDirectory() as tmpdir:
             yield Path(tmpdir)
 
-    def test_tdd_instructions_disabled_by_default(self, temp_project):
-        """Test that TDD instructions are empty when disabled."""
+    def test_tdd_instructions_always_returned(self, temp_project):
+        """Test that TDD instructions are always returned with heuristics."""
         config = ProjectConfig()
-        agent = ConcreteAgent(temp_project, config)
-
-        instructions = agent._get_tdd_instructions()
-        assert instructions == ""
-
-    def test_tdd_instructions_enabled(self, temp_project):
-        """Test that TDD instructions are returned when enabled."""
-        config = ProjectConfig(
-            stack=StackConfig(tdd_enabled=True)
-        )
         agent = ConcreteAgent(temp_project, config)
 
         instructions = agent._get_tdd_instructions()
@@ -779,22 +769,9 @@ class TestTDDInstructions:
         assert "REFACTOR" in instructions
         assert "Write Failing Test First" in instructions
 
-    def test_tdd_placeholder_replacement_disabled(self, temp_project):
-        """Test that {{tdd_instructions}} is replaced with empty string when disabled."""
+    def test_tdd_placeholder_replacement(self, temp_project):
+        """Test that {{tdd_instructions}} is replaced with TDD content."""
         config = ProjectConfig()
-        agent = ConcreteAgent(temp_project, config)
-
-        template = "Before {{tdd_instructions}}After"
-        result = agent._apply_common_placeholders(template)
-
-        assert result == "Before After"
-        assert "{{tdd_instructions}}" not in result
-
-    def test_tdd_placeholder_replacement_enabled(self, temp_project):
-        """Test that {{tdd_instructions}} is replaced with TDD content when enabled."""
-        config = ProjectConfig(
-            stack=StackConfig(tdd_enabled=True)
-        )
         agent = ConcreteAgent(temp_project, config)
 
         template = "Before\n{{tdd_instructions}}\nAfter"

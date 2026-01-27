@@ -238,11 +238,8 @@ class BaseAgent(ABC):
         - Migration scripts
 
         Returns:
-            TDD instructions string, or empty string if TDD is disabled.
+            TDD instructions string with heuristics for when to apply TDD.
         """
-        if not self.config.stack.tdd_enabled:
-            return ""
-
         return """
 ## TDD Workflow Guidelines
 

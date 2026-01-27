@@ -84,12 +84,6 @@ class TestStackConfig:
         config = StackConfig()
         assert config.language == "typescript"
         assert config.test_command == "npm test"
-        assert config.tdd_enabled is False
-
-    def test_tdd_enabled(self):
-        """Tests TDD enabled configuration."""
-        config = StackConfig(tdd_enabled=True)
-        assert config.tdd_enabled is True
 
 
 class TestProjectConfig:
@@ -101,7 +95,6 @@ class TestProjectConfig:
         assert config.name == "my-project"
         assert config.stack.language == "typescript"
         assert config.stack.test_command == "npm test"
-        assert config.stack.tdd_enabled is False
 
     def test_from_dict(self):
         """Test de création depuis un dictionnaire."""
@@ -123,17 +116,6 @@ class TestProjectConfig:
         # Valeurs par défaut pour modèles non-spécifiés
         assert config.models.specification == "sonnet"
         assert config.models.qa == "sonnet"
-        # TDD should default to False
-        assert config.stack.tdd_enabled is False
-
-    def test_from_dict_with_tdd_enabled(self):
-        """Test de création depuis un dictionnaire avec TDD activé."""
-        data = {
-            "project": {"name": "tdd-project"},
-            "stack": {"language": "ruby", "test_command": "rspec", "tdd_enabled": True},
-        }
-        config = ProjectConfig.from_dict(data)
-        assert config.stack.tdd_enabled is True
 
     def test_to_dict(self):
         """Test de conversion en dictionnaire."""
@@ -145,19 +127,9 @@ class TestProjectConfig:
         data = config.to_dict()
         assert data["project"]["name"] == "my-app"
         assert data["stack"]["language"] == "go"
-        assert data["stack"]["tdd_enabled"] is False
         assert data["models"]["implementation"] == "opus"
         assert data["models"]["pr"] == "haiku"
         assert data["models"]["specification"] == "sonnet"
-
-    def test_to_dict_with_tdd_enabled(self):
-        """Test de conversion en dictionnaire avec TDD activé."""
-        config = ProjectConfig(
-            name="tdd-app",
-            stack=StackConfig(language="ruby", test_command="rspec", tdd_enabled=True),
-        )
-        data = config.to_dict()
-        assert data["stack"]["tdd_enabled"] is True
 
 
 class TestConfigIO:
