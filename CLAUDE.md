@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Ralphy
 
 Web-based UI for the Claude Code CLI: a desktop/mobile interface for managing
@@ -26,6 +30,34 @@ the sections you need rather than loading everything: `claude-sdk-integration.md
 files; if you genuinely need to (e.g. a third-party script that ships as
 `.js`), update the allowlist in `scripts/guard-no-js.ts`.
 
+**TypeScript path aliases** (declared in both `tsconfig.json` and `vitest.config.ts`):
+- `@shared/*` → `./shared/*`
+- `@/*` → `./src/*`
+- `@server/*` → `./server/*`
+
+## Commands
+
+This project uses **pnpm** (pinned via `packageManager` in `package.json` and
+provisioned by Corepack — run `corepack enable` once after cloning).
+
+```bash
+pnpm dev              # frontend (Vite :5173) + backend (:3001) concurrently
+pnpm server           # backend only
+pnpm client           # frontend only
+pnpm create-user      # create the first user interactively (run once after setup)
+pnpm test             # watch mode
+pnpm test:run         # single run
+pnpm test:run server/services/agentRunner.test.ts  # single file
+pnpm test -- --grep "pattern"  # filter by test name
+pnpm test:coverage    # with coverage report
+pnpm typecheck        # tsc --noEmit (type-check without building)
+pnpm lint             # eslint (runs guard-no-js first via prelint hook)
+pnpm build            # production build
+```
+
+Backend (`tsx`) does **not** hot-reload — restart the dev server to pick up
+backend changes. Frontend changes hot-reload via Vite HMR.
+
 ## Data Architecture
 
 ### What SQLite stores (server/database/ralphy.db)
@@ -34,7 +66,7 @@ The database stores **metadata only** — projects, tasks, conversations, users:
 
 - `projects` — id, name, repo_folder_path
 - `tasks` — id, project_id, title, status, workflow flags
-- `conversations` — id, task_id, claude_conversation_id, session_path
+- `conversations` — id, task_id, claude_conversation_id, session_path, provider, model, effort
 - `task_agent_runs` — id, task_id, agent_type, status, conversation_id
 
 **Schema:** `server/database/init.sql`
@@ -77,14 +109,45 @@ sqlite3 server/database/ralphy.db "SELECT * FROM tasks WHERE id = 562;"
 sqlite3 server/database/ralphy.db "SELECT * FROM projects WHERE id = 178;"
 ```
 
-## Third-Party APIs & Libraries
+## Provider Architecture
 
-Before using any external API or library:
-1. **Verify with Context7 MCP** — `resolve-library-id` → `get-library-docs`
-2. **If insufficient**, use `WebFetch` on official docs
-3. **Never assume** method names, parameters, or response formats
+Three LLM providers are registered at startup in `server/services/providers/registry.ts`:
+- `anthropic` — Claude via `@anthropic-ai/claude-agent-sdk`
+- `openai` — Codex via `@openai/codex-sdk`
+- `opencode` — OpenCode via `@opencode-ai/sdk`
 
-## API request validation
+Each conversation row stamps its `provider`, `model`, and `effort` at creation; those
+values are read back on resume so the correct SDK is always used. Agent model settings
+are per-user (`user_agent_model_settings` table) so each user can pick their own
+provider/model per agent type.
+
+Credentials are managed separately in `server/services/credentials/registry.ts`
+(one `CredentialStore` per provider). OAuth/token flows per provider live in
+`server/services/claudeCredentials.ts`, `codexCredentials.ts`, and `openCodeCredentials.ts`.
+
+## Agentic Pipeline
+
+The automated agent loop uses six agent types defined in `shared/websocket/messages.ts`:
+`planification` → `implementation` → `review` → `refinement` → `pr` (plus `yolo` for single-step).
+
+Auto-chaining is driven by workflow flags on the `tasks` row:
+- `workflow_complete` — stops the loop (set by `scripts/complete-workflow.ts`)
+- `workflow_blocked` — pauses for user intervention
+- `planification_complete` — gates the implementation step
+- `refinement_complete` — gates the pr step
+- `pr_agent_complete` — final PR step done
+- `yolo_mode` — bypasses the multi-step pipeline
+
+Each agent run creates a `task_agent_runs` row and a linked `conversations` row.
+`server/services/agentRunner.ts` creates the run and starts streaming;
+`server/services/conversation/streamingLifecycle.ts` fires the next agent when
+a run completes.
+
+Prompt templates live in `server/constants/prompts/` (one `.md` per agent type).
+Users can override them by dropping files into `~/.ralphy/prompts/` — the renderer
+in `server/services/promptRenderer.ts` prefers the user file if it exists.
+
+## API Request Validation
 
 Every Express route handler that reads `req.body`, `req.params`, or `req.query`
 must validate that input through a zod schema before touching it. Schemas live
@@ -105,29 +168,18 @@ each route casts to the schema it asked for). When adding a new route, add a
 schema to `shared/schemas/`, plug the matching `validate*` middleware in front
 of the handler, and delete any ad-hoc shape checks that the schema now enforces.
 
-## pnpm scripts
+## Testing
 
-This project uses **pnpm** (pinned via `packageManager` in `package.json` and
-provisioned by Corepack — run `corepack enable` once after cloning).
+Always add or update tests for the code you change. Fix any failing test until
+the whole suite is green.
 
-- `pnpm dev` — frontend + backend concurrently (Vite on :5173, API on :3001)
-- `pnpm server` / `pnpm client` — backend / frontend only (used internally by `pnpm dev`)
-- `pnpm build` — production build
-- `pnpm test:run` — unit + integration tests (single run)
-
-Backend (`tsx`) does **not** hot-reload — restart the dev server to pick up
-backend changes. Frontend changes hot-reload via Vite HMR.
-
-## Testing Instructions
-
-- Always add or update tests for the code you change, even if nobody asked.
-- Fix any failing test until the whole suite is green.
-
-```bash
-pnpm test              # watch mode
-pnpm test:run          # single run
-pnpm test:coverage     # with coverage report
-```
+**Test helpers** (avoid reimplementing these inline):
+- `server/test/db-helper.ts` — `createTestDatabase()` returns an in-memory
+  SQLite instance pre-loaded with the full schema plus typed helpers for every
+  table. Use this instead of mocking the DB module.
+- `server/test/routes-helper.ts` — `createTestApp(routerModule, basePath)` mounts
+  a router on an Express app with mocked `authenticateToken` middleware
+  (`req.user = { id: 1, username: 'testuser' }`). Use `supertest` against this.
 
 There is no Playwright e2e suite — UI flows are validated manually via the
 Playwright MCP server and protected by the unit/integration suite (`pnpm test:run`).
@@ -175,3 +227,10 @@ iteration, print the current number, then sleep 1 second. Use the Bash tool."* �
 | `browser_press_key` | Press a keyboard key |
 | `browser_wait_for` | Wait for text/time |
 | `browser_console_messages` | Check for errors |
+
+## Third-Party APIs & Libraries
+
+Before using any external API or library:
+1. **Verify with Context7 MCP** — `resolve-library-id` → `get-library-docs`
+2. **If insufficient**, use `WebFetch` on official docs
+3. **Never assume** method names, parameters, or response formats
