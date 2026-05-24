@@ -37,7 +37,11 @@ Users create projects, define tasks, and either chat with Claude scoped to a tas
                       │
                       ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  Claude Agent SDK (one subprocess per query)                      │
+│  LLM Providers (registered in services/providers/registry.ts)     │
+│     anthropic  — @anthropic-ai/claude-agent-sdk                   │
+│     openai     — @openai/codex-sdk                                │
+│     opencode   — @opencode-ai/sdk + per-user opencode serve pool  │
+│  Credentials (services/credentials/registry.ts — one store/provider)│
 │  SQLite (server/database/ralphy.db)                              │
 │     ├─ Domain tables: users, projects, project_members, tasks,    │
 │     │  conversations, task_agent_runs, app_settings,              │
@@ -73,7 +77,7 @@ This directory is organized by architectural concern. Pull whichever file matche
 
 - **Frontend**: React 18, Vite, React Router, Tailwind CSS, CodeMirror.
 - **Backend**: Node.js (`tsx` for dev), Express, `ws`, `better-sqlite3`, `node-pty` (for the Claude login PTY), `bcrypt`, `jsonwebtoken`.
-- **External APIs**: Anthropic via the `@anthropic-ai/claude-agent-sdk`; OpenAI `gpt-4o-transcribe` for voice input.
+- **External APIs**: Anthropic via `@anthropic-ai/claude-agent-sdk`; OpenAI Codex via `@openai/codex-sdk`; OpenCode via `@opencode-ai/sdk`; OpenAI `gpt-4o-transcribe` for voice input.
 - **TypeScript-only.** Every source file is `.ts`/`.tsx`. `tsconfig.json` sets `allowJs: false` and a `pnpm guard-no-js` prelint hook fails CI on any new `.js`/`.jsx` outside `node_modules`/`dist`/`coverage`.
 
 ## Repository layout
@@ -87,8 +91,9 @@ server/             Backend
   routes/           HTTP route handlers (one file per resource)
   services/         Domain logic
     conversation/   Conversation lifecycle (orchestrators, streaming loop, hooks)
+    providers/      LLM provider registry + per-provider adapters (anthropic/, openai/, opencode/)
+    credentials/    Per-provider credential stores + registry
     sqliteSessionStore.ts  Claude SDK sessionStore backend
-    claudeCredentials.ts   Per-user OAuth tokens
     agentRunner.ts         Agent run orchestration
     worktree.ts            Git worktree primitives
     promptRenderer.ts      Prompt template engine
@@ -109,7 +114,7 @@ shared/             Shared frontend/backend types
   api/              Typed REST request/response contracts
   websocket/        Typed WebSocket message union
   types/            DB row types, agent model settings
-  sdk/              Re-exports from @anthropic-ai/claude-agent-sdk
+  sdk/              Provider-agnostic transcript types
 
 scripts/
   complete-workflow.ts   Set workflow_complete=1 (agents run this)
