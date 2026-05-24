@@ -6,6 +6,7 @@ import {
   generateYoloMessage,
   generatePrAgentMessage,
   generatePlanificationMessage,
+  generateReviewMessage,
   generatePrAgentCommentMessage,
   generatePrAgentReviewMessage,
 } from './agentPrompts.js';
@@ -88,6 +89,52 @@ describe('generatePrAgentMessage (shared body refactor regression)', () => {
     expect(msg).toContain('Summary: <what the task does and how this implementation solves it');
     expect(msg).toContain('Keep this to a short paragraph');
     expect(msg).not.toContain('gh pr create --title "Task #1" --body "Implementation for task #1"');
+  });
+});
+
+describe('agent completion script paths', () => {
+  const taskDocPath = '/repo/.ralphy/tasks/task-42.md';
+  const taskId = 42;
+  let archiveRoot: string;
+
+  beforeEach(() => {
+    archiveRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-path-test-'));
+    process.env.RALPHY_ARCHIVE_ROOT = archiveRoot;
+  });
+
+  afterEach(() => {
+    if (archiveRoot && fs.existsSync(archiveRoot)) {
+      fs.rmSync(archiveRoot, { recursive: true, force: true });
+    }
+    delete process.env.RALPHY_ARCHIVE_ROOT;
+  });
+
+  it('renders repo-relative completion commands instead of environment-specific absolute paths', async () => {
+    const messages = [
+      await generatePlanificationMessage(taskDocPath, taskId, true),
+      await generatePlanificationMessage(taskDocPath, taskId, false),
+      await generateReviewMessage(taskDocPath, taskId),
+      await generateYoloMessage(taskDocPath, taskId, null),
+      await generatePrAgentMessage(taskDocPath, taskId, null),
+      await generatePrAgentCommentMessage(taskDocPath, taskId, null, {
+        commentBody: 'fix',
+        commentAuthor: 'alice',
+      }),
+      await generatePrAgentReviewMessage(taskDocPath, taskId, null, {
+        reviewBody: 'fix',
+        reviewAuthor: 'alice',
+        comments: [],
+      }),
+    ];
+
+    for (const msg of messages) {
+      expect(msg).not.toContain('/home/ubuntu/ralphy/reference/scripts');
+    }
+
+    expect(messages.join('\n')).toContain(`tsx scripts/complete-plan.ts ${taskId}`);
+    expect(messages.join('\n')).toContain(`tsx scripts/complete-workflow.ts ${taskId}`);
+    expect(messages.join('\n')).toContain(`tsx scripts/block-workflow.ts ${taskId}`);
+    expect(messages.join('\n')).toContain(`tsx scripts/complete-pr.ts ${taskId}`);
   });
 });
 

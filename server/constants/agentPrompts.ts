@@ -52,7 +52,7 @@ Create a PR for this task:
 3. Verify there are commits ahead of the base branch: \`git log origin/main..HEAD --oneline\`
    - **If no commits ahead** (and no uncommitted changes were found in step 1): there is nothing to submit. Run the completion script and stop:
    \`\`\`bash
-   tsx /home/ubuntu/ralphy/reference/scripts/complete-pr.ts ${taskId}
+   tsx scripts/complete-pr.ts ${taskId}
    \`\`\`
 4. Push to origin: \`git push -u origin $(git branch --show-current)\`
 5. Create PR with a short specific title and concise summary body. Replace the placeholders with the actual task title and implementation summary:
