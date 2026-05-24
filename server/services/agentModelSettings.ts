@@ -40,6 +40,15 @@ export class MissingUserAgentSettingsError extends Error {
   }
 }
 
+function normalizeLegacySetting(
+  setting: { provider: unknown; model: unknown; effort: unknown },
+): { provider: unknown; model: unknown; effort: unknown } {
+  if (setting.provider === 'openai' && setting.effort === 'minimal') {
+    return { ...setting, effort: 'low' };
+  }
+  return setting;
+}
+
 /**
  * Load a user's full per-agent settings. Throws `MissingUserAgentSettingsError`
  * when the row is absent or any of the six agents is missing/invalid — callers
@@ -75,11 +84,11 @@ export function loadAgentModelSettings(userId: number): AgentModelSettings {
     const e = entry as { provider?: unknown; model?: unknown; effort?: unknown };
     // D6 legacy compat: backfilled rows from before the `provider` field read
     // back as 'anthropic'. The model is still validated against that provider.
-    const candidate = {
+    const candidate = normalizeLegacySetting({
       provider: e.provider ?? 'anthropic',
       model: e.model,
       effort: e.effort ?? null,
-    };
+    });
     if (!isValidAgentModelSetting(candidate)) {
       throw new MissingUserAgentSettingsError(userId, `invalid entry for '${agentType}'`);
     }

@@ -19,8 +19,14 @@ describe('shared/types/agentModelSettings', () => {
 
     it('accepts a well-formed OpenAI triple', () => {
       expect(
-        isValidAgentModelSetting({ provider: 'openai', model: 'gpt-5.5', effort: 'minimal' }),
+        isValidAgentModelSetting({ provider: 'openai', model: 'gpt-5.5', effort: 'low' }),
       ).toBe(true);
+    });
+
+    it('rejects OpenAI minimal effort because Codex tools are incompatible with it', () => {
+      expect(
+        isValidAgentModelSetting({ provider: 'openai', model: 'gpt-5.5', effort: 'minimal' }),
+      ).toBe(false);
     });
 
     it('accepts an OpenCode entry with a null effort', () => {

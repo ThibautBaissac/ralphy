@@ -60,6 +60,16 @@ describe('buildCodexThreadOptions', () => {
     expect(opts.modelReasoningEffort).toBe('high');
   });
 
+  it('maps legacy minimal effort to low for Codex tool compatibility', () => {
+    const opts = buildCodexThreadOptions({
+      cwd: '/x',
+      prompt: 'hi',
+      model: 'gpt-5.4',
+      effort: 'minimal',
+    });
+    expect(opts.modelReasoningEffort).toBe('low');
+  });
+
   it('passes the model through verbatim (validation is upstream — no silent drop)', () => {
     // The model is gated by the create-conversation schema and the
     // agent-settings validator before it ever reaches here, so the builder

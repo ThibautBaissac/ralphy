@@ -30,7 +30,7 @@
 // `auth.json` on its own, so we surface SDK errors verbatim.
 
 import { promises as fs } from 'fs';
-import { conversationsDb, tasksDb } from '../../database/db.js';
+import { conversationsDb, tasksDb, agentRunsDb } from '../../database/db.js';
 import { resolveResumeModelEffort } from '../agentModelSettings.js';
 import { getWorktreeProjectPath, worktreeExists } from '../worktree.js';
 import { generateConversationTitle } from '../titleGenerator.js';
@@ -49,7 +49,7 @@ import {
 import { buildAgentRunCompletionHandler } from './agentRunLifecycle.js';
 import { resolveSlashCommand } from './slashCommands.js';
 import type { ConversationOptions, StreamingContext } from './types.js';
-import type { BroadcastFn } from '@shared/websocket/messages';
+import type { BroadcastFn, BroadcastToTaskSubscribersFn } from '@shared/websocket/messages';
 import type { UnifiedMessage } from '@shared/providers/types';
 
 function composeOnComplete(ctx: StreamingContext): () => Promise<void> {
@@ -57,6 +57,44 @@ function composeOnComplete(ctx: StreamingContext): () => Promise<void> {
     () => handleStreamingComplete(ctx),
     buildAgentRunCompletionHandler(ctx),
   );
+}
+
+/**
+ * Pre-mark a still-running agent run as 'failed' when Codex reports or throws
+ * an error. Otherwise composeOnComplete would see status='running', mark the
+ * run completed, and auto-chain into the next agent despite the provider turn
+ * failing before any work was done.
+ */
+function failLinkedAgentRunIfRunning(
+  taskId: number | undefined,
+  conversationId: number,
+  broadcastToTaskSubscribersFn?: BroadcastToTaskSubscribersFn | undefined,
+): void {
+  if (!taskId) return;
+  try {
+    const runs = agentRunsDb.getByTask(taskId);
+    const linked = runs.find((r) => r.conversation_id === conversationId);
+    if (linked && linked.status === 'running') {
+      agentRunsDb.updateStatus(linked.id, 'failed');
+      if (broadcastToTaskSubscribersFn) {
+        broadcastToTaskSubscribersFn(taskId, {
+          type: 'agent-run-updated',
+          agentRun: {
+            id: linked.id,
+            status: 'failed',
+            agent_type: linked.agent_type,
+            conversation_id: conversationId,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    // Best-effort: never throw out of an error-handling path.
+    console.warn(
+      '[ConversationAdapter] failed to pre-mark Codex agent run as failed:',
+      err,
+    );
+  }
 }
 
 /**
@@ -300,6 +338,13 @@ export async function sendCodexMessage(
         console.warn('[ConversationAdapter] Codex resume mirror failed:', err);
       });
       if (unified.type === 'result') {
+        if (unified.isError) {
+          failLinkedAgentRunIfRunning(
+            taskId ?? undefined,
+            conversationId,
+            broadcastToTaskSubscribersFn,
+          );
+        }
         await contextUsageTracker.onResult({
           type: 'result',
           ...(unified.usage ? { modelUsage: { codex: unified.usage } } : {}),
@@ -319,6 +364,11 @@ export async function sendCodexMessage(
     await composeOnComplete(ctx)();
   } catch (error) {
     console.error('[ConversationAdapter] Codex resume error:', error);
+    failLinkedAgentRunIfRunning(
+      taskId ?? undefined,
+      conversationId,
+      broadcastToTaskSubscribersFn,
+    );
     activeSessions.delete(resumeSessionId);
     if (broadcastFn) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -535,6 +585,13 @@ export async function startCodexConversation(
           }
 
           if (unified.type === 'result') {
+            if (unified.isError) {
+              failLinkedAgentRunIfRunning(
+                taskId,
+                conversationId!,
+                broadcastToTaskSubscribersFn,
+              );
+            }
             await contextUsageTracker.onResult({
               type: 'result',
               ...(unified.usage ? { modelUsage: { codex: unified.usage } } : {}),
@@ -563,6 +620,7 @@ export async function startCodexConversation(
         await composeOnComplete(ctx)();
       } catch (error) {
         console.error('[ConversationAdapter] Codex streaming error:', error);
+        failLinkedAgentRunIfRunning(taskId, conversationId!, broadcastToTaskSubscribersFn);
         if (ctx.claudeSessionId) {
           activeSessions.delete(ctx.claudeSessionId);
         }

@@ -35,8 +35,8 @@ describe('shared/providers/models', () => {
       expect(OPENAI_MODELS).toEqual(['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini']);
     });
 
-    it('exposes OpenAI efforts mirroring the SDK ModelReasoningEffort union (minimal..xhigh)', () => {
-      expect(OPENAI_EFFORTS).toEqual(['minimal', 'low', 'medium', 'high', 'xhigh']);
+    it('exposes OpenAI efforts supported by Codex tools', () => {
+      expect(OPENAI_EFFORTS).toEqual(['low', 'medium', 'high', 'xhigh']);
     });
 
     it('ships no hardcoded OpenCode model list — the Zen catalog is fetched live from /api/opencode-auth/models', () => {
@@ -112,8 +112,8 @@ describe('shared/providers/models', () => {
       expect(isOpenAIModel('gpt-4')).toBe(false);
     });
 
-    it('isOpenAIEffort accepts minimal..xhigh and rejects max', () => {
-      expect(isOpenAIEffort('minimal')).toBe(true);
+    it('isOpenAIEffort accepts low..xhigh and rejects minimal/max', () => {
+      expect(isOpenAIEffort('minimal')).toBe(false);
       expect(isOpenAIEffort('xhigh')).toBe(true);
       expect(isOpenAIEffort('max')).toBe(false);
       expect(isOpenAIEffort(undefined)).toBe(false);
@@ -160,7 +160,7 @@ describe('shared/providers/models', () => {
     it('isEffortForProvider rejects cross-provider efforts', () => {
       expect(isEffortForProvider('anthropic', 'max')).toBe(true);
       expect(isEffortForProvider('anthropic', 'minimal')).toBe(false);
-      expect(isEffortForProvider('openai', 'minimal')).toBe(true);
+      expect(isEffortForProvider('openai', 'minimal')).toBe(false);
       expect(isEffortForProvider('openai', 'max')).toBe(false);
       expect(isEffortForProvider('opencode', 'high')).toBe(false);
       expect(isEffortForProvider('opencode', 'max')).toBe(false);

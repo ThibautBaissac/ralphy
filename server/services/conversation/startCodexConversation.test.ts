@@ -72,7 +72,7 @@ vi.mock('./slashCommands.js', () => ({
   resolveSlashCommand: vi.fn(async (m: string | null) => m),
 }));
 
-import { tasksDb, conversationsDb } from '../../database/db.js';
+import { tasksDb, conversationsDb, agentRunsDb } from '../../database/db.js';
 import { codexProvider } from '../providers/openai/index.js';
 import { startCodexConversation, sendCodexMessage } from './startCodexConversation.js';
 
@@ -120,6 +120,30 @@ function buildFakeRun(events: UnifiedMessage[]) {
         if (e.providerSessionId) resolveSid(e.providerSessionId);
         yield e;
       }
+    },
+  };
+}
+
+function buildFailingRunAfterStart(error: Error) {
+  let resolveSid!: (id: string) => void;
+  const providerSessionId$ = new Promise<string>((resolve) => {
+    resolveSid = resolve;
+  });
+  return {
+    providerSessionId$,
+    abort: vi.fn(),
+    pid: null,
+    async *events() {
+      resolveSid(SID);
+      yield {
+        type: 'system',
+        id: 'thread_started',
+        provider: 'openai',
+        providerSessionId: SID,
+        raw: null,
+        subtype: 'thread_started',
+      } satisfies UnifiedMessage;
+      throw error;
     },
   };
 }
@@ -344,5 +368,50 @@ describe('startCodexConversation', () => {
 
     const callArg = vi.mocked(codexProvider.startTurn).mock.calls[0]![0];
     expect(callArg.env).toEqual({ CODEX_HOME: '/fake', HOME: '/h', PATH: '/p' });
+  });
+
+  it('marks a linked agent run failed when Codex throws after session start', async () => {
+    const broadcastToTaskSubscribersFn = vi.fn();
+    const linkedRun = {
+      id: 99,
+      conversation_id: 11,
+      agent_type: 'implementation',
+      status: 'running',
+    };
+    vi.mocked(agentRunsDb.getByTask).mockImplementation(() => [linkedRun] as never);
+    vi.mocked(agentRunsDb.updateStatus).mockImplementation((_id, status) => {
+      linkedRun.status = status;
+      return undefined as never;
+    });
+
+    const fakeRun = buildFailingRunAfterStart(new Error('Codex Exec exited with code 1'));
+    vi.mocked(codexProvider.startTurn).mockResolvedValueOnce({
+      providerSessionId$: fakeRun.providerSessionId$,
+      abort: fakeRun.abort,
+      pid: null,
+      events: fakeRun.events(),
+    });
+
+    await startCodexConversation(1, 'hi', {
+      userId: 1,
+      provider: 'openai',
+      model: 'gpt-5.5',
+      broadcastFn,
+      broadcastToTaskSubscribersFn,
+    });
+    await waitForBroadcast(broadcastFn, 'claude-error');
+    await waitForBroadcast(broadcastFn, 'streaming-ended');
+
+    expect(agentRunsDb.updateStatus).toHaveBeenCalledWith(99, 'failed');
+    expect(agentRunsDb.updateStatus).not.toHaveBeenCalledWith(99, 'completed');
+    expect(broadcastToTaskSubscribersFn).toHaveBeenCalledWith(1, {
+      type: 'agent-run-updated',
+      agentRun: {
+        id: 99,
+        status: 'failed',
+        agent_type: 'implementation',
+        conversation_id: 11,
+      },
+    });
   });
 });

@@ -75,7 +75,7 @@ export interface ProviderRunOptions {
    */
   model: string;
   /**
-   * Provider-specific reasoning effort (e.g. `'high'`, `'minimal'`), or `null`
+   * Provider-specific reasoning effort (e.g. `'high'`, `'low'`), or `null`
    * when the provider has no effort dimension (OpenCode) or none was chosen.
    */
   effort: string | null;

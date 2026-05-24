@@ -31,7 +31,6 @@ export const MODEL_LABELS: Record<string, string> = {
 };
 
 export const EFFORT_LABELS: Record<string, string> = {
-  minimal: 'Minimal',
   low: 'Low',
   medium: 'Medium',
   high: 'High',

@@ -10,9 +10,9 @@
 //   - Anthropic models: Sonnet, Opus (no Haiku).
 //   - OpenAI models: GPT-5.5, GPT-5.4, GPT-5.4 mini.
 //   - Anthropic efforts: low / medium / high / xhigh / max.
-//   - OpenAI efforts: minimal / low / medium / high / xhigh
-//     (mirrors the TS Codex SDK's `ModelReasoningEffort` union — see
-//     `openai/codex/sdk/typescript/src/threadOptions.ts`).
+//   - OpenAI efforts: low / medium / high / xhigh. The Codex SDK type also
+//     exposes `minimal`, but the current Codex CLI enables tools (`image_gen`,
+//     `web_search`) that are rejected by the API with `reasoning.effort=minimal`.
 //
 // Per docs/opencode/00-context-decisions.md § R15 + § D5 + § D6:
 //   - OpenCode models: curated subset of the Zen catalog, prefixed
@@ -31,7 +31,7 @@ export type AnthropicEffort = (typeof ANTHROPIC_EFFORTS)[number];
 export const OPENAI_MODELS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'] as const;
 export type OpenAIModel = (typeof OPENAI_MODELS)[number];
 
-export const OPENAI_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+export const OPENAI_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
 export type OpenAIEffort = (typeof OPENAI_EFFORTS)[number];
 
 // The Zen catalog is owned by OpenCode (≈40 models, churned by their

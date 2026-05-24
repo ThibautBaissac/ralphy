@@ -39,6 +39,9 @@ export function mapPermissionModeToCodexOptions(
 
 function normalizeEffort(effort: string | null | undefined): ModelReasoningEffort | undefined {
   if (!effort) return undefined;
+  // Compatibility for rows saved before Ralphy stopped offering `minimal`.
+  // Codex CLI currently sends tools that the API rejects with minimal effort.
+  if (effort === 'minimal') return 'low';
   return (OPENAI_EFFORTS as readonly string[]).includes(effort)
     ? (effort as ModelReasoningEffort)
     : undefined;

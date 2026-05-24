@@ -1,14 +1,11 @@
 // CodexProvider — implements `LlmProvider` for the OpenAI Codex SDK.
 //
-// Phase 9 ships the provider; Phase 10 plugs in per-user `CODEX_HOME`
-// credentials. Until Phase 10 lands, `startTurn` uses whatever
-// auth.json the calling user's shell has under their home (matching
-// `claudecodeui`'s single-tenant default). The orchestrator does not
-// route Codex turns through here yet — Phase 11's settings wire-up
-// flips the switch.
+// Phase 9 ships the provider; later phases route per-user `CODEX_HOME`
+// credentials through `ProviderRunOptions.env`. The Codex SDK accepts that
+// environment only on the Codex client constructor, not per-thread options.
 
 import { Codex } from '@openai/codex-sdk';
-import type { ThreadEvent, Thread } from '@openai/codex-sdk';
+import type { CodexOptions, ThreadEvent, Thread } from '@openai/codex-sdk';
 
 import { mapEvent } from './mapEvent.js';
 import { buildCodexThreadOptions } from './codexOptionsBuilder.js';
@@ -28,6 +25,36 @@ interface ActiveCodexSession {
 }
 
 const ACTIVE_SESSIONS = new Map<string, ActiveCodexSession>();
+type CodexClientFactory = (options?: CodexOptions) => Codex;
+
+const GLOBAL_CODEX_AUTH_ENV_KEYS = [
+  'OPENAI_API_KEY',
+  'OPENAI_BASE_URL',
+  'OPENAI_ORG_ID',
+  'CODEX_HOME',
+  'CODEX_API_KEY',
+] as const;
+
+function compactEnvEntries(
+  env: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!env) return out;
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) out[key] = value;
+  }
+  return out;
+}
+
+function buildCodexProcessEnv(
+  overrides: Record<string, string | undefined> | undefined,
+): Record<string, string> {
+  const env = compactEnvEntries(process.env);
+  for (const key of GLOBAL_CODEX_AUTH_ENV_KEYS) {
+    delete env[key];
+  }
+  return { ...env, ...compactEnvEntries(overrides) };
+}
 
 function buildSyntheticUser(
   prompt: string,
@@ -78,10 +105,15 @@ async function* streamUnified(
 export class CodexProvider implements LlmProvider {
   readonly name = 'openai' as const;
 
-  private codex: Codex;
+  private codex: Codex | null;
+  private createCodex: CodexClientFactory;
 
-  constructor(codex: Codex = new Codex()) {
+  constructor(
+    codex: Codex | null = null,
+    createCodex: CodexClientFactory = (options) => new Codex(options),
+  ) {
     this.codex = codex;
+    this.createCodex = createCodex;
   }
 
   getCapabilities(): ProviderCapabilities {
@@ -90,7 +122,7 @@ export class CodexProvider implements LlmProvider {
 
   async startTurn(options: ProviderRunOptions): Promise<ProviderRunResult> {
     const threadOptions = buildCodexThreadOptions(options);
-    const thread = this.codex.startThread(threadOptions);
+    const thread = this.getClient(options).startThread(threadOptions);
     return this.runOnThread(thread, options);
   }
 
@@ -98,8 +130,13 @@ export class CodexProvider implements LlmProvider {
     options: ProviderRunOptions & { resumeSessionId: string },
   ): Promise<ProviderRunResult> {
     const threadOptions = buildCodexThreadOptions(options);
-    const thread = this.codex.resumeThread(options.resumeSessionId, threadOptions);
+    const thread = this.getClient(options).resumeThread(options.resumeSessionId, threadOptions);
     return this.runOnThread(thread, options);
+  }
+
+  private getClient(options: ProviderRunOptions): Codex {
+    if (this.codex) return this.codex;
+    return this.createCodex({ env: buildCodexProcessEnv(options.env) });
   }
 
   private async runOnThread(

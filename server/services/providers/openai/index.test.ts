@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ThreadEvent } from '@openai/codex-sdk';
+import type { Codex, CodexOptions, ThreadEvent } from '@openai/codex-sdk';
 
 import { CodexProvider } from './index.js';
 
@@ -17,7 +17,7 @@ function makeFakeCodex(events: ThreadEvent[]) {
     startThread: vi.fn(() => thread),
     resumeThread: vi.fn(() => thread),
   };
-  return { codex: codex as unknown as ConstructorParameters<typeof CodexProvider>[0], thread };
+  return { codex: codex as unknown as Codex, thread };
 }
 
 describe('CodexProvider', () => {
@@ -84,6 +84,81 @@ describe('CodexProvider', () => {
     ] as never);
     const p = new CodexProvider(codex);
     await p.sendTurnMessage({ cwd: '/x', prompt: 'msg', model: 'gpt-5.5', effort: null, resumeSessionId: 'tid-old' });
+    expect((codex as unknown as { resumeThread: ReturnType<typeof vi.fn> }).resumeThread).toHaveBeenCalledWith(
+      'tid-old',
+      expect.objectContaining({ workingDirectory: '/x' }),
+    );
+  });
+
+  it('constructs Codex with inherited env plus per-turn overrides when no client is injected', async () => {
+    const { codex } = makeFakeCodex([
+      { type: 'thread.started', thread_id: 'tid-env' },
+      {
+        type: 'turn.completed',
+        usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 },
+      },
+    ] as never);
+    const createCodex = vi.fn((_options?: CodexOptions): Codex => codex);
+    const env = { CODEX_HOME: '/tmp/codex-home', HOME: '/tmp/home', PATH: '/usr/bin' };
+    const oldSshAuthSock = process.env['SSH_AUTH_SOCK'];
+    const oldOpenAiApiKey = process.env['OPENAI_API_KEY'];
+    const oldCodexHome = process.env['CODEX_HOME'];
+
+    try {
+      process.env['SSH_AUTH_SOCK'] = '/tmp/agent.sock';
+      process.env['OPENAI_API_KEY'] = 'global-key';
+      process.env['CODEX_HOME'] = '/tmp/global-codex-home';
+
+      const p = new CodexProvider(null, createCodex);
+      const run = await p.startTurn({ cwd: '/x', prompt: 'hi', model: 'gpt-5.5', effort: null, env });
+
+      for await (const _ of run.events) {
+        void _;
+      }
+
+      const codexOptions = createCodex.mock.calls[0]![0]!;
+      expect(codexOptions.env).toMatchObject({
+        SSH_AUTH_SOCK: '/tmp/agent.sock',
+        CODEX_HOME: '/tmp/codex-home',
+        HOME: '/tmp/home',
+        PATH: '/usr/bin',
+      });
+      expect(codexOptions.env).not.toHaveProperty('OPENAI_API_KEY');
+      expect((codex as unknown as { startThread: ReturnType<typeof vi.fn> }).startThread).toHaveBeenCalledWith(
+        expect.objectContaining({ workingDirectory: '/x' }),
+      );
+    } finally {
+      if (oldSshAuthSock === undefined) delete process.env['SSH_AUTH_SOCK'];
+      else process.env['SSH_AUTH_SOCK'] = oldSshAuthSock;
+      if (oldOpenAiApiKey === undefined) delete process.env['OPENAI_API_KEY'];
+      else process.env['OPENAI_API_KEY'] = oldOpenAiApiKey;
+      if (oldCodexHome === undefined) delete process.env['CODEX_HOME'];
+      else process.env['CODEX_HOME'] = oldCodexHome;
+    }
+  });
+
+  it('constructs Codex with the per-turn env when resuming', async () => {
+    const { codex } = makeFakeCodex([
+      { type: 'thread.started', thread_id: 'tid-env' },
+      {
+        type: 'turn.completed',
+        usage: { input_tokens: 1, cached_input_tokens: 0, output_tokens: 0, reasoning_output_tokens: 0 },
+      },
+    ] as never);
+    const createCodex = vi.fn((_options?: CodexOptions): Codex => codex);
+    const env = { CODEX_HOME: '/tmp/codex-home', HOME: '/tmp/home', PATH: '/usr/bin' };
+
+    const p = new CodexProvider(null, createCodex);
+    await p.sendTurnMessage({
+      cwd: '/x',
+      prompt: 'hi',
+      model: 'gpt-5.5',
+      effort: null,
+      env,
+      resumeSessionId: 'tid-old',
+    });
+
+    expect(createCodex.mock.calls[0]![0]!.env).toMatchObject(env);
     expect((codex as unknown as { resumeThread: ReturnType<typeof vi.fn> }).resumeThread).toHaveBeenCalledWith(
       'tid-old',
       expect.objectContaining({ workingDirectory: '/x' }),

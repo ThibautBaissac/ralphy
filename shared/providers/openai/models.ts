@@ -13,7 +13,6 @@ export const OPENAI_MODEL_LABELS: Record<OpenAIModel, string> = {
 };
 
 export const OPENAI_EFFORT_LABELS: Record<OpenAIEffort, string> = {
-  minimal: 'Minimal',
   low: 'Low',
   medium: 'Medium',
   high: 'High',
