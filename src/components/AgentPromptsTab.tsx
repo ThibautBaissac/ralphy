@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../utils/api';
 import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { useAppSettings } from '../contexts/AppSettingsContext';
 import { RotateCcw, Save, AlertCircle, Loader2 } from 'lucide-react';
 import type {
   PromptListItem,
@@ -12,6 +14,43 @@ import type { ApiError } from '../../shared/api/_common';
 // Prompt-template editor (global, admin-only). Per-agent provider/model/effort
 // is no longer here — it moved to the per-user "Agent Models" tab.
 function AgentPromptsTab() {
+  const { scriptsDir, refresh: refreshAppSettings } = useAppSettings();
+  const [scriptsDirDraft, setScriptsDirDraft] = useState(scriptsDir);
+  const [isSavingScriptsDir, setSavingScriptsDir] = useState(false);
+  const [scriptsDirError, setScriptsDirError] = useState<string | null>(null);
+  const [scriptsDirStatus, setScriptsDirStatus] = useState<string | null>(null);
+
+  // Keep the draft in sync when the context-level value changes (initial load
+  // or another tab refresh).
+  useEffect(() => {
+    setScriptsDirDraft(scriptsDir);
+  }, [scriptsDir]);
+
+  const isScriptsDirDirty = scriptsDirDraft.trim() !== scriptsDir;
+
+  const handleSaveScriptsDir = async () => {
+    setScriptsDirError(null);
+    setScriptsDirStatus(null);
+    setSavingScriptsDir(true);
+    try {
+      const res = await api.appSettings.update({ scripts_dir: scriptsDirDraft.trim() });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as ApiError & {
+          issues?: Array<{ path?: Array<string | number>; message?: string }>;
+        };
+        const scriptsDirIssue = body.issues?.find((issue) => issue.path?.includes('scripts_dir'));
+        setScriptsDirError(scriptsDirIssue?.message || body.error || `Save failed: ${res.status}`);
+        return;
+      }
+      await refreshAppSettings();
+      setScriptsDirStatus('Saved');
+    } catch (err) {
+      setScriptsDirError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingScriptsDir(false);
+    }
+  };
+
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [detail, setDetail] = useState<GetPromptResponse | null>(null);
@@ -184,7 +223,61 @@ function AgentPromptsTab() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row gap-4 md:gap-6 h-full min-h-[500px]">
+    <div className="flex flex-col gap-4 md:gap-6 h-full min-h-[500px]">
+      {/* Scripts directory: an absolute path injected into agent prompts as
+          {{scriptsDir}}. Agents run inside per-task git worktrees where a
+          relative `scripts/foo.ts` doesn't resolve, so completion scripts
+          must be invoked via this absolute path. */}
+      <div className="border border-border rounded-md p-3 md:p-4 bg-muted/30">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[240px]">
+            <label
+              htmlFor="scripts-dir-input"
+              className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+            >
+              Scripts Directory
+            </label>
+            <Input
+              id="scripts-dir-input"
+              value={scriptsDirDraft}
+              onChange={(e) => setScriptsDirDraft(e.target.value)}
+              placeholder="/absolute/path/to/ralphy/scripts"
+              spellCheck={false}
+              data-testid="scripts-dir-input"
+              className="font-mono text-xs"
+            />
+          </div>
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleSaveScriptsDir}
+            disabled={!isScriptsDirDirty || isSavingScriptsDir}
+            data-testid="scripts-dir-save-button"
+          >
+            <Save className="w-4 h-4 mr-1" />
+            {isSavingScriptsDir ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Absolute path to Ralphy&apos;s <code className="px-1 py-0.5 bg-muted rounded">scripts/</code> directory.
+          Agents run inside per-task git worktrees and invoke completion scripts via this path
+          (interpolated into prompts as <code className="px-1 py-0.5 bg-muted rounded">{'{{scriptsDir}}'}</code>).
+          Defaults to the running server&apos;s install location.
+        </p>
+        {scriptsDirError && (
+          <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            <span>{scriptsDirError}</span>
+          </div>
+        )}
+        {scriptsDirStatus && !scriptsDirError && (
+          <div className="mt-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded text-sm text-emerald-700 dark:text-emerald-300">
+            {scriptsDirStatus}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6 flex-1 min-h-0">
       {/* Left rail: grouped prompt + template list */}
       <div className="md:w-56 flex-shrink-0 border-b md:border-b-0 md:border-r border-border md:pr-4 pb-4 md:pb-0">
         {promptItems.length > 0 && (
@@ -283,6 +376,7 @@ function AgentPromptsTab() {
             />
           </>
         )}
+      </div>
       </div>
     </div>
   );

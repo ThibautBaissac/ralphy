@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { appSettingsDb } from '../database/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,62 +50,66 @@ export interface PromptDefinition {
   variables: string[];
 }
 
+// `scriptsDir` is injected into every agent prompt at render time. It resolves
+// to the absolute path of Ralphy's bundled `scripts/` directory so completion
+// scripts work from inside per-task git worktrees, where a relative
+// `scripts/foo.ts` doesn't.
 const PROMPT_DEFINITIONS: PromptDefinition[] = [
   {
     name: 'planification',
     label: 'Planification',
     kind: 'prompt',
     file: 'planification.md',
-    variables: ['taskDocPath', 'taskId', 'planTemplatePath'],
+    variables: ['taskDocPath', 'taskId', 'planTemplatePath', 'scriptsDir'],
   },
   {
     name: 'planification-nontechnical',
     label: 'Planification (non-technical)',
     kind: 'prompt',
     file: 'planification-nontechnical.md',
-    variables: ['taskDocPath', 'taskId', 'planTemplatePath'],
+    variables: ['taskDocPath', 'taskId', 'planTemplatePath', 'scriptsDir'],
   },
   {
     name: 'implementation',
     label: 'Implementation',
     kind: 'prompt',
     file: 'implementation.md',
-    variables: ['taskDocPath', 'taskId'],
+    variables: ['taskDocPath', 'taskId', 'scriptsDir'],
   },
   {
     name: 'review',
     label: 'Review',
     kind: 'prompt',
     file: 'review.md',
-    variables: ['taskDocPath', 'taskId'],
+    variables: ['taskDocPath', 'taskId', 'scriptsDir'],
   },
   {
     name: 'refinement',
     label: 'Refinement',
     kind: 'prompt',
     file: 'refinement.md',
-    variables: ['taskDocPath', 'taskId'],
+    variables: ['taskDocPath', 'taskId', 'scriptsDir'],
   },
   {
     name: 'pr',
     label: 'PR Agent',
     kind: 'prompt',
     file: 'pr.md',
-    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock'],
+    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock', 'scriptsDir'],
   },
   {
     name: 'yolo',
     label: 'YOLO Agent',
     kind: 'prompt',
     file: 'yolo.md',
-    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock'],
+    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock', 'scriptsDir'],
   },
   {
     name: 'pr-feedback',
     label: 'PR Feedback Response',
     kind: 'prompt',
     file: 'pr-feedback.md',
-    variables: ['taskDocPath', 'taskId', 'prUrl', 'feedbackSection'],
+    variables: ['taskDocPath', 'taskId', 'prUrl', 'feedbackSection', 'scriptsDir'],
   },
   {
     name: 'plan-template',
@@ -217,6 +222,18 @@ export function render(template: string, vars: Record<string, unknown>): string 
   });
 }
 
+function shellQuotePath(value: string): string {
+  if (/^[A-Za-z0-9_/:@%+=,.-]+$/.test(value)) {
+    return value;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function getScriptsDirForPrompt(): string {
+  const raw = appSettingsDb.getValue('scripts_dir') ?? appSettingsDb.getDefault('scripts_dir') ?? '';
+  return shellQuotePath(raw);
+}
+
 /**
  * Return all {{var}} names referenced in the template, deduplicated.
  */
@@ -249,5 +266,5 @@ export function findUnknownVariables(name: string, content: string): string[] {
  * Convenience: load a prompt by name and render with vars.
  */
 export function renderPrompt(name: string, vars: Record<string, unknown>): string {
-  return render(loadPrompt(name), vars);
+  return render(loadPrompt(name), { ...vars, scriptsDir: getScriptsDirForPrompt() });
 }

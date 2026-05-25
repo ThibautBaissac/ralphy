@@ -14,15 +14,19 @@ import type {
 
 // Defaults mirror the server side. Used while the initial fetch is in flight
 // and as a fallback if the request fails (login screen still needs to render).
+// `scripts_dir` defaults to an empty string client-side because the real value
+// is a server-filesystem path that only the backend can compute.
 const DEFAULTS: AppSettings = {
   internal_tool_name: 'Ralphy',
   github_pr_trigger: 'ralphy',
+  scripts_dir: '',
 };
 
 export interface AppSettingsContextValue {
   isLoaded: boolean;
   internalToolName: string;
   githubPrTrigger: string;
+  scriptsDir: string;
   refresh: () => Promise<void>;
 }
 
@@ -70,6 +74,7 @@ export const AppSettingsProvider = ({ children }: { children: ReactNode }) => {
     isLoaded,
     internalToolName: settings.internal_tool_name,
     githubPrTrigger: settings.github_pr_trigger,
+    scriptsDir: settings.scripts_dir,
     refresh,
   };
 

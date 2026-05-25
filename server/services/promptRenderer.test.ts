@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -19,6 +19,9 @@ import {
   renderPrompt,
   resolvePromptPath
 } from './promptRenderer.js';
+import { appSettingsDb } from '../database/db.js';
+
+const TEST_SCRIPTS_DIR = '/srv/scripts';
 
 describe('promptRenderer', () => {
   let archiveRoot: string;
@@ -26,6 +29,12 @@ describe('promptRenderer', () => {
   beforeEach(() => {
     archiveRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'prompts-test-'));
     process.env.RALPHY_ARCHIVE_ROOT = archiveRoot;
+    vi.spyOn(appSettingsDb, 'getValue').mockImplementation((key: string) =>
+      key === 'scripts_dir' ? TEST_SCRIPTS_DIR : null,
+    );
+    vi.spyOn(appSettingsDb, 'getDefault').mockImplementation((key: string) =>
+      key === 'scripts_dir' ? TEST_SCRIPTS_DIR : null,
+    );
   });
 
   afterEach(() => {
@@ -33,6 +42,7 @@ describe('promptRenderer', () => {
       fs.rmSync(archiveRoot, { recursive: true, force: true });
     }
     delete process.env.RALPHY_ARCHIVE_ROOT;
+    vi.restoreAllMocks();
   });
 
   describe('render', () => {
@@ -121,6 +131,22 @@ describe('promptRenderer', () => {
       expect(getPromptDefinition('planification')!.variables).toContain('planTemplatePath');
       expect(getPromptDefinition('planification-nontechnical')!.variables).toContain('planTemplatePath');
     });
+
+    it('exposes scriptsDir as an allowed variable on every agent prompt', () => {
+      const promptNames = [
+        'planification',
+        'planification-nontechnical',
+        'implementation',
+        'review',
+        'refinement',
+        'pr',
+        'yolo',
+        'pr-feedback',
+      ];
+      for (const name of promptNames) {
+        expect(getPromptDefinition(name)!.variables).toContain('scriptsDir');
+      }
+    });
   });
 
   describe('loadPrompt fallback chain', () => {
@@ -182,7 +208,10 @@ describe('promptRenderer', () => {
 
   describe('renderPrompt', () => {
     it('loads and renders the implementation prompt', () => {
-      const out = renderPrompt('implementation', { taskDocPath: '/x/y.md', taskId: 7 });
+      const out = renderPrompt('implementation', {
+        taskDocPath: '/x/y.md',
+        taskId: 7,
+      });
       expect(out).toContain('/x/y.md');
       expect(out).toContain('Start implementing now.');
     });
@@ -197,6 +226,31 @@ describe('promptRenderer', () => {
       expect(out).toContain('### 1. CREATE BLOCK CONTENT');
       expect(out).toContain('complete-pr.ts 99');
       expect(out).toContain('gh pr checks');
+    });
+
+    it('substitutes {{scriptsDir}} into the review prompt', () => {
+      const out = renderPrompt('review', {
+        taskDocPath: '/x/y.md',
+        taskId: 11,
+      });
+      expect(out).toContain('tsx /srv/scripts/complete-workflow.ts 11');
+      expect(out).toContain('tsx /srv/scripts/block-workflow.ts 11');
+      // No bare relative path leaks through.
+      expect(out).not.toMatch(/\btsx scripts\//);
+    });
+
+    it('shell-quotes {{scriptsDir}} when the configured absolute path contains spaces', () => {
+      vi.spyOn(appSettingsDb, 'getValue').mockImplementation((key: string) =>
+        key === 'scripts_dir' ? '/srv/Ralphy Install/scripts' : null,
+      );
+
+      const out = renderPrompt('review', {
+        taskDocPath: '/x/y.md',
+        taskId: 11,
+      });
+
+      expect(out).toContain("tsx '/srv/Ralphy Install/scripts'/complete-workflow.ts 11");
+      expect(out).toContain("tsx '/srv/Ralphy Install/scripts'/block-workflow.ts 11");
     });
   });
 

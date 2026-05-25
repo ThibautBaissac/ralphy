@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -11,6 +11,19 @@ import {
   generatePrAgentReviewMessage,
 } from './agentPrompts.js';
 import { saveOverride, deleteOverride } from '../services/promptRenderer.js';
+import { appSettingsDb } from '../database/db.js';
+
+// Pin scripts_dir so prompt rendering is deterministic regardless of the local
+// dev DB or filesystem layout. Individual tests can override per-case.
+const TEST_SCRIPTS_DIR = '/test/scripts';
+beforeEach(() => {
+  vi.spyOn(appSettingsDb, 'getValue').mockImplementation((key: string) =>
+    key === 'scripts_dir' ? TEST_SCRIPTS_DIR : null,
+  );
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('generateYoloMessage', () => {
   const taskDocPath = '/repo/.ralphy/tasks/task-42.md';
@@ -109,7 +122,7 @@ describe('agent completion script paths', () => {
     delete process.env.RALPHY_ARCHIVE_ROOT;
   });
 
-  it('renders repo-relative completion commands instead of environment-specific absolute paths', async () => {
+  it('renders completion commands using the configured absolute scripts_dir', async () => {
     const messages = [
       await generatePlanificationMessage(taskDocPath, taskId, true),
       await generatePlanificationMessage(taskDocPath, taskId, false),
@@ -127,14 +140,29 @@ describe('agent completion script paths', () => {
       }),
     ];
 
+    // No stale environment-specific hardcoded paths from earlier iterations.
     for (const msg of messages) {
       expect(msg).not.toContain('/home/ubuntu/ralphy/reference/scripts');
+      // No bare relative `scripts/foo.ts` invocations — agents run inside
+      // git worktrees where that path doesn't resolve.
+      expect(msg).not.toMatch(/\btsx scripts\/(complete|block)-/);
     }
 
-    expect(messages.join('\n')).toContain(`tsx scripts/complete-plan.ts ${taskId}`);
-    expect(messages.join('\n')).toContain(`tsx scripts/complete-workflow.ts ${taskId}`);
-    expect(messages.join('\n')).toContain(`tsx scripts/block-workflow.ts ${taskId}`);
-    expect(messages.join('\n')).toContain(`tsx scripts/complete-pr.ts ${taskId}`);
+    const joined = messages.join('\n');
+    expect(joined).toContain(`tsx ${TEST_SCRIPTS_DIR}/complete-plan.ts ${taskId}`);
+    expect(joined).toContain(`tsx ${TEST_SCRIPTS_DIR}/complete-workflow.ts ${taskId}`);
+    expect(joined).toContain(`tsx ${TEST_SCRIPTS_DIR}/block-workflow.ts ${taskId}`);
+    expect(joined).toContain(`tsx ${TEST_SCRIPTS_DIR}/complete-pr.ts ${taskId}`);
+  });
+
+  it('picks up an updated scripts_dir setting on the next render (no restart needed)', async () => {
+    vi.spyOn(appSettingsDb, 'getValue').mockImplementation((key: string) =>
+      key === 'scripts_dir' ? '/custom/somewhere/scripts' : null,
+    );
+
+    const msg = await generateYoloMessage(taskDocPath, taskId, null);
+    expect(msg).toContain(`tsx /custom/somewhere/scripts/complete-workflow.ts ${taskId}`);
+    expect(msg).toContain(`tsx /custom/somewhere/scripts/complete-pr.ts ${taskId}`);
   });
 });
 

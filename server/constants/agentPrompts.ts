@@ -8,7 +8,11 @@
  * to change agent behavior without touching code.
  */
 
-import { renderPrompt, resolvePromptPath } from '../services/promptRenderer.js';
+import {
+  getScriptsDirForPrompt,
+  renderPrompt,
+  resolvePromptPath,
+} from '../services/promptRenderer.js';
 
 interface FileContext {
   path?: string;
@@ -45,6 +49,7 @@ function buildPrCreateOrVerifyBlock(taskId: number, prUrl: string | null | undef
     return `### 1. Verify PR Exists
 A PR already exists at ${prUrl}. Skip to step 2.`;
   }
+  const scriptsDir = getScriptsDirForPrompt();
   return `### 1. Create PR
 Create a PR for this task:
 1. Check for uncommitted changes: \`git status\`
@@ -52,7 +57,7 @@ Create a PR for this task:
 3. Verify there are commits ahead of the base branch: \`git log origin/main..HEAD --oneline\`
    - **If no commits ahead** (and no uncommitted changes were found in step 1): there is nothing to submit. Run the completion script and stop:
    \`\`\`bash
-   tsx scripts/complete-pr.ts ${taskId}
+   tsx ${scriptsDir}/complete-pr.ts ${taskId}
    \`\`\`
 4. Push to origin: \`git push -u origin $(git branch --show-current)\`
 5. Create PR with a short specific title and concise summary body. Replace the placeholders with the actual task title and implementation summary:
@@ -96,7 +101,12 @@ export async function generatePrAgentMessage(
     ? `- Existing PR: ${prUrl}`
     : '- No PR exists yet - you need to create one';
   const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl);
-  return renderPrompt('pr', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock });
+  return renderPrompt('pr', {
+    taskDocPath,
+    taskId,
+    prContextLine,
+    prCreateOrVerifyBlock,
+  });
 }
 
 export async function generateYoloMessage(
@@ -108,7 +118,12 @@ export async function generateYoloMessage(
     ? `- Existing PR: ${prUrl}`
     : '- No PR exists yet - you will create one at the end';
   const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl);
-  return renderPrompt('yolo', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock });
+  return renderPrompt('yolo', {
+    taskDocPath,
+    taskId,
+    prContextLine,
+    prCreateOrVerifyBlock,
+  });
 }
 
 export async function generatePrAgentCommentMessage(

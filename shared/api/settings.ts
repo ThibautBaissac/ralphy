@@ -64,14 +64,18 @@ export interface PromptConcurrentEditError {
 // ---- App settings (global key/value) -------------------------------------
 //
 // Keys are constrained to the allow-list defined in `appSettings.js`
-// (`internal_tool_name`, `github_pr_trigger`). The response merges any
-// stored values with `APP_SETTINGS_DEFAULTS`, so consumers always see a
-// fully-populated shape. Per-agent provider/model/effort is NOT here — it
-// moved to per-user storage (`/api/user-agent-model-settings`).
+// (`internal_tool_name`, `github_pr_trigger`, `scripts_dir`). The response
+// merges any stored values with `APP_SETTINGS_DEFAULTS`, so consumers always
+// see a fully-populated shape. Per-agent provider/model/effort is NOT here —
+// it moved to per-user storage (`/api/user-agent-model-settings`).
 
 export interface AppSettings {
   internal_tool_name: string;
   github_pr_trigger: string;
+  // Absolute path to the bundled Ralphy `scripts/` directory. Agents
+  // interpolate this into their prompts so that completion scripts resolve
+  // correctly from inside per-task git worktrees.
+  scripts_dir: string;
 }
 
 export type GetAppSettingsResponse = AppSettings;
@@ -113,3 +117,4 @@ export interface ListCommandsResponse {
 
 expectType<keyof AppSettings>('internal_tool_name');
 expectType<keyof AppSettings>('github_pr_trigger');
+expectType<keyof AppSettings>('scripts_dir');

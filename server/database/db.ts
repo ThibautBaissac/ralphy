@@ -1479,9 +1479,15 @@ const agentRunsDb = {
 // Per-agent provider/model/effort moved to per-user storage
 // (`user_agent_model_settings`); it is no longer a global app-setting key.
 // DEFAULT_AGENT_MODEL_SETTINGS is still used by the one-shot backfill above.
+//
+// `scripts_dir` defaults to the running server's bundled `scripts/` directory.
+// Agents run inside per-task git worktrees, where a relative `scripts/foo.ts`
+// path doesn't resolve — so prompts interpolate this absolute path instead.
+const DEFAULT_SCRIPTS_DIR = path.resolve(__dirname, '../..', 'scripts');
 const APP_SETTINGS_DEFAULTS: Record<string, string> = {
   internal_tool_name: 'Ralphy',
   github_pr_trigger: 'ralphy',
+  scripts_dir: DEFAULT_SCRIPTS_DIR,
 };
 
 const appSettingsDb = {

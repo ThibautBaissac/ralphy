@@ -35,7 +35,33 @@ vi.mock('../utils/api', () => ({
       savePrompt: vi.fn(),
       resetPrompt: vi.fn(),
     },
+    appSettings: {
+      get: vi.fn(),
+      update: vi.fn(),
+    },
   },
+}));
+
+// `useAppSettings` is consumed for the Scripts Directory banner. Stub the
+// context so tests don't need a real AppSettingsProvider wrapper.
+vi.mock('../contexts/AppSettingsContext', () => ({
+  useAppSettings: () => ({
+    isLoaded: true,
+    internalToolName: 'Ralphy',
+    githubPrTrigger: 'ralphy',
+    scriptsDir: '/srv/ralphy/scripts',
+    refresh: vi.fn(),
+  }),
+}));
+
+vi.mock('./ui/input', () => ({
+  Input: ({
+    value,
+    onChange,
+    ...rest
+  }: React.InputHTMLAttributes<HTMLInputElement>) => (
+    <input value={value} onChange={onChange} {...rest} />
+  ),
 }));
 
 import { api } from '../utils/api';
