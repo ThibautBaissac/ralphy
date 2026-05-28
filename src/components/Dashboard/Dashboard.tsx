@@ -8,12 +8,13 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FolderPlus, Settings, MessageSquare } from 'lucide-react';
-import { Button } from '../ui/button';
+import { Link, useNavigate } from 'react-router-dom';
+import { FolderPlus, Settings, MessageSquare, Shield } from 'lucide-react';
+import { Button, buttonVariants } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
 import { useTaskContext } from '../../contexts/TaskContext';
 import { useAppSettings } from '../../contexts/AppSettingsContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../utils/api';
 import { cleanupWorktreeOnComplete } from '../../utils/worktreeCleanup';
 import { useTasksLiveSubscriptions } from '../../hooks/useTasksLiveSubscriptions';
@@ -63,6 +64,8 @@ function Dashboard({
     liveTaskIds,
   } = useTaskContext();
   const { internalToolName } = useAppSettings();
+  const { user } = useAuth();
+  const isAdmin = user?.is_admin === 1;
 
   // View mode: 'project' or 'in_progress'
   const [viewMode, setViewMode] = useState<DashboardViewMode>('project');
@@ -360,6 +363,15 @@ function Dashboard({
             <Button variant="ghost" size="sm" onClick={onShowSettings}>
               <Settings className="w-4 h-4" />
             </Button>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+              >
+                <Shield className="w-4 h-4" />
+                Admin
+              </Link>
+            )}
             <Button variant="default" size="sm" onClick={onShowProjectForm}>
               <FolderPlus className="w-4 h-4 mr-2" />
               New Project

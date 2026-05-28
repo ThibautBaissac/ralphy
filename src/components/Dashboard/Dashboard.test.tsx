@@ -4,12 +4,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import { useTaskContext, type TaskContextValue } from '../../contexts/TaskContext';
+import { useAuth, type AuthContextValue } from '../../contexts/AuthContext';
 import { api } from '../../utils/api';
 import { mockTypedResponse } from '../../test/typedResponse';
 
 // Mock the TaskContext
 vi.mock('../../contexts/TaskContext', () => ({
   useTaskContext: vi.fn(),
+}));
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: vi.fn(),
 }));
 
 // Dashboard subscribes its visible tasks to the WS for live badges; stub
@@ -55,6 +60,7 @@ vi.mock('lucide-react', () => {
   return {
     FolderPlus: createIcon('FolderPlus'),
     Settings: createIcon('Settings'),
+    Shield: createIcon('Shield'),
     MessageSquare: createIcon('MessageSquare'),
     LayoutGrid: createIcon('LayoutGrid'),
     Clock: createIcon('Clock'),
@@ -115,9 +121,29 @@ describe('Dashboard Component', () => {
     liveTaskIds: new Set<number>(),
   } as unknown as TaskContextValue;
 
+  const defaultAuthValue = {
+    user: {
+      id: 1,
+      username: 'testuser',
+      created_at: '2026-01-01 00:00:00',
+      last_login: null,
+      is_admin: 0,
+      is_technical: 1,
+    },
+    token: 'token',
+    login: vi.fn(),
+    register: vi.fn(),
+    logout: vi.fn(),
+    updateProfile: vi.fn(),
+    isLoading: false,
+    needsSetup: false,
+    error: null,
+  } as unknown as AuthContextValue;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(useTaskContext).mockReturnValue(defaultContextValue);
+    vi.mocked(useAuth).mockReturnValue(defaultAuthValue);
 
     // Default API mock responses
     vi.mocked(api.tasks.list).mockResolvedValue(mockTypedResponse({ tasks: [] } as never));
@@ -142,6 +168,28 @@ describe('Dashboard Component', () => {
       renderWithRouter(<Dashboard />);
 
       expect(screen.getByTestId('icon-settings')).toBeInTheDocument();
+    });
+
+    it('should not render the Admin link for non-admin users', () => {
+      renderWithRouter(<Dashboard />);
+
+      expect(screen.queryByRole('link', { name: /admin/i })).not.toBeInTheDocument();
+    });
+
+    it('should render the Admin link for admin users', () => {
+      vi.mocked(useAuth).mockReturnValue({
+        ...defaultAuthValue,
+        user: {
+          ...defaultAuthValue.user!,
+          is_admin: 1,
+        },
+      });
+
+      renderWithRouter(<Dashboard />);
+
+      const adminLink = screen.getByRole('link', { name: /admin/i });
+      expect(adminLink).toBeInTheDocument();
+      expect(adminLink).toHaveAttribute('href', '/admin');
     });
 
     it('should render project cards when projects exist', async () => {
