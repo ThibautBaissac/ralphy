@@ -16,6 +16,10 @@ kill_timeout = 30
   CLAUDE_CONFIG_ROOT = "/data/ralphy/users"
   CODEX_CONFIG_ROOT = "/data/ralphy/users"
   OPENCODE_CONFIG_ROOT = "/data/ralphy/users"
+  # Provider CLIs can take ~20s to first output on a cold page cache, past the
+  # 15s default wait for the OAuth URL. Give the login flow generous headroom.
+  CLAUDE_AUTH_URL_WAIT_MS = "45000"
+  CODEX_AUTH_URL_WAIT_MS = "45000"
 
 [http_service]
   internal_port = 8080

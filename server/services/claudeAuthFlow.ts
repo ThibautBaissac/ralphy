@@ -9,7 +9,11 @@ import type { ClaudeAuthStatus } from './claudeCredentials.js';
 import { spawnPtyProcess, type PtyProcess } from './ptyProcess.js';
 
 const DEFAULT_LOGIN_TTL_MS = 10 * 60 * 1000;
-const URL_WAIT_TIMEOUT_MS = 15000;
+// The Claude CLI's first output can lag many seconds when its JS bundle is cold
+// in the page cache (observed ~21s on a freshly-booted Fly machine), so the wait
+// for the OAuth URL is configurable via CLAUDE_AUTH_URL_WAIT_MS. Default stays at
+// 15s for local dev where the CLI is warm.
+const URL_WAIT_TIMEOUT_MS = Number(process.env.CLAUDE_AUTH_URL_WAIT_MS) || 15000;
 const COMPLETE_WAIT_TIMEOUT_MS = 60000;
 const OUTPUT_LIMIT = 40000;
 const MIN_PKCE_VALUE_LENGTH = 43;

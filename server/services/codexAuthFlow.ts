@@ -30,7 +30,9 @@ import {
 import { spawnPtyProcess, type PtyProcess } from './ptyProcess.js';
 
 const DEFAULT_LOGIN_TTL_MS = 15 * 60 * 1000;
-const URL_WAIT_TIMEOUT_MS = 15000;
+// Like Claude, the Codex CLI can be slow to first output on a cold page cache;
+// make the OAuth-URL wait configurable via CODEX_AUTH_URL_WAIT_MS (default 15s).
+const URL_WAIT_TIMEOUT_MS = Number(process.env.CODEX_AUTH_URL_WAIT_MS) || 15000;
 const EXIT_WAIT_TIMEOUT_MS = 15 * 60 * 1000; // matches CLI's "expires in 15 minutes"
 const OUTPUT_LIMIT = 40000;
 
