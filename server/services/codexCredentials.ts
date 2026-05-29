@@ -320,5 +320,11 @@ export function buildCodexSdkEnv(
   };
   removeInheritedCodexAuthEnv(env);
   env['CODEX_HOME'] = resolveCodexHomeDir(userId);
+  // Forward Ralphy's runtime paths so the completion scripts the agent runs
+  // (complete-plan/-workflow/-pr.ts) resolve the same DB/archive as the server.
+  // Without DATABASE_PATH the scripts open a throwaway empty DB and report the
+  // task as missing. Undefined in local dev, where the defaults are correct.
+  env['DATABASE_PATH'] = process.env['DATABASE_PATH'];
+  env['RALPHY_ARCHIVE_ROOT'] = process.env['RALPHY_ARCHIVE_ROOT'];
   return env as CodexSdkEnv;
 }

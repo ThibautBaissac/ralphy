@@ -384,5 +384,11 @@ export function buildOpenCodeSpawnEnv(
   env['GH_CONFIG_DIR'] = resolveHostGhConfigDir();
   env['OPENCODE_CONFIG'] = '/dev/null';
   env['OPENCODE_CONFIG_CONTENT'] = SPAWN_CONFIG_CONTENT;
+  // Forward Ralphy's runtime paths so the completion scripts the agent runs
+  // (complete-plan/-workflow/-pr.ts) resolve the same DB/archive as the server.
+  // Without DATABASE_PATH the scripts open a throwaway empty DB and report the
+  // task as missing. Undefined in local dev, where the defaults are correct.
+  env['DATABASE_PATH'] = process.env['DATABASE_PATH'];
+  env['RALPHY_ARCHIVE_ROOT'] = process.env['RALPHY_ARCHIVE_ROOT'];
   return env as OpenCodeSpawnEnv;
 }

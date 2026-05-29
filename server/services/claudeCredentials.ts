@@ -235,6 +235,8 @@ export interface ClaudeSdkEnv extends Record<string, string | undefined> {
   ANTHROPIC_API_KEY: undefined;
   ANTHROPIC_AUTH_TOKEN: undefined;
   IS_SANDBOX: string | undefined;
+  DATABASE_PATH: string | undefined;
+  RALPHY_ARCHIVE_ROOT: string | undefined;
 }
 
 // Sparse env handed to the SDK's `query({ options: { env } })`. The token is
@@ -254,6 +256,15 @@ export function buildClaudeSdkEnv(userId: number | string | undefined): ClaudeSd
     // under root and the agent subprocess exits 1 before streaming anything.
     // Unset in local dev, where it stays undefined and is dropped.
     IS_SANDBOX: process.env.IS_SANDBOX,
+    // Forward Ralphy's own runtime paths so the completion scripts the agent
+    // runs (complete-plan/-workflow/-pr.ts, all via `tsx`) resolve the SAME
+    // database and archive as the server. Without DATABASE_PATH the scripts
+    // fall back to the default `server/database/ralphy.db`, silently opening a
+    // fresh empty DB — the agent then reports "the task doesn't exist" and
+    // workflow flags are written to a throwaway file. Undefined in local dev,
+    // where the defaults already point at the right place.
+    DATABASE_PATH: process.env.DATABASE_PATH,
+    RALPHY_ARCHIVE_ROOT: process.env.RALPHY_ARCHIVE_ROOT,
   };
 }
 
