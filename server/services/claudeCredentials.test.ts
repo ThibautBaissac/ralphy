@@ -132,6 +132,35 @@ describe('claudeCredentials', () => {
     expect(env).not.toHaveProperty('CLAUDE_CONFIG_DIR');
   });
 
+  it('forwards IS_SANDBOX and Ralphy runtime paths into the SDK env', () => {
+    provisionToken(42, 'sk-ant-oat01-sdk-token');
+    process.env.IS_SANDBOX = '1';
+    process.env.DATABASE_PATH = '/data/ralphy/database/ralphy.db';
+    process.env.RALPHY_ARCHIVE_ROOT = '/data/ralphy/archive';
+
+    const env = buildClaudeSdkEnv(42);
+
+    // Agents shell out to the completion scripts (complete-plan/-workflow/-pr),
+    // which resolve the DB via DATABASE_PATH; the root sandbox flag and archive
+    // root must reach the subprocess too.
+    expect(env.IS_SANDBOX).toBe('1');
+    expect(env.DATABASE_PATH).toBe('/data/ralphy/database/ralphy.db');
+    expect(env.RALPHY_ARCHIVE_ROOT).toBe('/data/ralphy/archive');
+  });
+
+  it('leaves forwarded env vars undefined when unset (local dev)', () => {
+    provisionToken(42, 'sk-ant-oat01-sdk-token');
+    delete process.env.IS_SANDBOX;
+    delete process.env.DATABASE_PATH;
+    delete process.env.RALPHY_ARCHIVE_ROOT;
+
+    const env = buildClaudeSdkEnv(42);
+
+    expect(env.IS_SANDBOX).toBeUndefined();
+    expect(env.DATABASE_PATH).toBeUndefined();
+    expect(env.RALPHY_ARCHIVE_ROOT).toBeUndefined();
+  });
+
   it('builds spawn env with the per-user OAuth token and strips inherited auth vars', () => {
     provisionToken(42, 'sk-ant-oat01-spawn-token');
     process.env.ANTHROPIC_API_KEY = 'global-api-key';
