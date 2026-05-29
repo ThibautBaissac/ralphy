@@ -428,6 +428,34 @@ a credential helper works too, but SSH deploy keys are the recommended path.
 > # expect: "Hi <name>! You've successfully authenticated"
 > ```
 
+### The PR agent needs an authenticated `gh`
+
+The PR agent shells out to the GitHub CLI (`gh pr create`, `gh pr checks`,
+`gh pr view`, `gh run view`). `gh` is installed in the image, but ships with no
+credentials — and the SSH deploy key only authorizes `git push`, not the GitHub
+API. Without auth the agent stops with *"The gh CLI is not available and there's
+no GitHub token in the environment."*
+
+Authenticate `gh` once on the volume. Its config lives at
+`/data/home/.config/gh` (`$HOME/.config/gh`), which every agent inherits via
+`HOME=/data/home`, so a single login covers all providers and survives deploys:
+
+1. Create a GitHub token scoped to the repos Ralphy manages:
+   - **Fine-grained** (preferred): *Contents: Read and write* + *Pull requests:
+     Read and write* on the target repos.
+   - or a **classic** token with the `repo` scope.
+2. Log in non-interactively (inside `fly ssh console`):
+
+   ```bash
+   export HOME=/data/home
+   echo "<TOKEN>" | gh auth login --git-protocol ssh --with-token
+   gh auth status                         # expect: Logged in to github.com as <user>
+   ```
+
+`gh` stores the token under `/data/home/.config/gh/hosts.yml` on the volume. The
+branch is pushed over SSH (the deploy key), and `gh pr create` then opens the PR
+over the API with this token.
+
 ## Add Projects In Ralphy
 
 A **project** in Ralphy is a database row pointing at a git repository **on the
