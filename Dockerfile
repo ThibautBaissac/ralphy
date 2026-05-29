@@ -48,6 +48,11 @@ RUN ln -sfn /data/home/.ssh /root/.ssh
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV DISABLE_AUTOUPDATER=1
+# The container runs as root; Claude Code blocks --dangerously-skip-permissions
+# (Ralphy's bypassPermissions mode) as root unless it thinks it's sandboxed.
+# The isolated single-tenant Machine is that sandbox — without this, every
+# agent subprocess exits 1 immediately.
+ENV IS_SANDBOX=1
 ENV HOME=/data/home
 ENV DATABASE_PATH=/data/ralphy/database/ralphy.db
 ENV RALPHY_ARCHIVE_ROOT=/data/ralphy/archive

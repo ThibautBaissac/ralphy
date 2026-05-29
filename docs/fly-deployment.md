@@ -568,6 +568,33 @@ starts.
 
 ## Troubleshooting
 
+### Agent runs fail instantly with an empty conversation
+
+Symptom: starting an agent (e.g. planification) flips the run to `failed`
+within seconds, the linked conversation has no messages, and the logs show:
+
+```
+[ConversationAdapter] Streaming error: Error: Claude Code process exited with code 1
+```
+
+Cause: the container runs as **root**, and Ralphy drives agents in
+`bypassPermissions` mode, which the SDK passes to the CLI as
+`--dangerously-skip-permissions`. Claude Code refuses that flag under root
+(`--dangerously-skip-permissions cannot be used with root/sudo privileges`),
+so the subprocess exits 1 before emitting anything.
+
+Fix: set `IS_SANDBOX=1` (already in `fly.toml`/`Dockerfile`) so Claude Code
+treats the isolated Machine as a sandbox and allows the flag. Confirm it
+reached the Machine:
+
+```bash
+fly ssh console --app ralphy-prod -C "/bin/bash -c 'echo \$IS_SANDBOX'"
+```
+
+A failed run leaves the task `in_progress`; just re-launch the agent from the
+UI after deploying the fix. (The proper alternative to `IS_SANDBOX=1` is to run
+the app as a non-root user, but that requires reworking volume ownership.)
+
 ### App starts but UI assets 404
 
 Confirm the Express production static-serving change is present and that the
