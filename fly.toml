@@ -20,6 +20,11 @@ kill_timeout = 30
   # 15s default wait for the OAuth URL. Give the login flow generous headroom.
   CLAUDE_AUTH_URL_WAIT_MS = "45000"
   CODEX_AUTH_URL_WAIT_MS = "45000"
+  # The container runs as root, and Claude Code refuses
+  # --dangerously-skip-permissions (Ralphy's bypassPermissions mode) as root
+  # unless it believes it's sandboxed. The single-tenant Fly Machine is that
+  # sandbox, so opt in — without this every agent subprocess exits 1 instantly.
+  IS_SANDBOX = "1"
 
 [http_service]
   internal_port = 8080
