@@ -46,7 +46,7 @@ try {
 
 console.log('PORT from env:', process.env.PORT);
 
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 import cors from 'cors';
@@ -334,6 +334,22 @@ app.post('/api/transcribe', authenticateToken, async (req: Request, res: Respons
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Production SPA fallback — must stay the LAST route registration in this file.
+// The `app.get('*', …)` catchall matches every GET, so any route added below it
+// would be unreachable in prod. New API routes go above this block.
+const clientDistPath = path.join(__dirname, '..', 'dist');
+
+if (process.env.NODE_ENV === 'production' && fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith('/api')) {
+      next();
+      return;
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 function permToRwx(perm: number): string {
   const r = perm & 4 ? 'r' : '-';
