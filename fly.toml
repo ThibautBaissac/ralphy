@@ -48,7 +48,7 @@ kill_timeout = 30
 [[mounts]]
   source = "ralphy_data"
   destination = "/data"
-  initial_size = "20gb"
+  initial_size = "5gb"
   snapshot_retention = 14
   auto_extend_size_threshold = 80
   auto_extend_size_increment = "5gb"
