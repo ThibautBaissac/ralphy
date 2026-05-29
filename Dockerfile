@@ -38,6 +38,13 @@ RUN pnpm build
 # their already-compiled native bindings.
 RUN pnpm prune --prod
 
+# The app runs as root, and OpenSSH resolves `~/.ssh` from root's passwd home
+# (/root), ignoring $HOME. Symlink it to the volume so git-over-SSH (clone,
+# fetch, the PR agent's push) uses the key + known_hosts stored on /data. The
+# target is created at runtime when the volume mounts; the symlink survives
+# deploys because it lives in the image.
+RUN ln -sfn /data/home/.ssh /root/.ssh
+
 ENV NODE_ENV=production
 ENV PORT=8080
 ENV DISABLE_AUTOUPDATER=1

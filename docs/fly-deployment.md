@@ -392,11 +392,10 @@ land in the layer history and survive every deploy.
    or an org SSH key instead.
 
 3. Pre-trust GitHub's host key so the first non-interactive clone doesn't hang
-   on a prompt, then verify auth:
+   on a prompt:
 
    ```bash
    ssh-keyscan github.com >> /data/home/.ssh/known_hosts
-   ssh -T git@github.com   # expect: "Hi <name>! You've successfully authenticated"
    ```
 
 4. Clone over SSH (not HTTPS) so the key is used:
@@ -409,6 +408,25 @@ land in the layer history and survive every deploy.
 The key and `known_hosts` persist on the volume across deploys, so this is a
 one-time setup per app. For HTTPS remotes instead, a GitHub fine-grained PAT in
 a credential helper works too, but SSH deploy keys are the recommended path.
+
+> **Why the key must be reachable from `/root/.ssh`, not just `$HOME`.** The
+> container runs as **root**, and OpenSSH resolves `~/.ssh` from root's passwd
+> home (`/root`) — it ignores the `HOME=/data/home` env var. So a key sitting in
+> `/data/home/.ssh` is invisible to plain `ssh`/`git` unless `/root/.ssh` points
+> at it. The Dockerfile bakes that symlink in
+> (`ln -sfn /data/home/.ssh /root/.ssh`), so once the image carries it, plain
+> `ssh -T git@github.com` and the PR agent's `git push` work as root with no
+> extra flags. (Git itself *does* honor `$HOME`, so the git identity in
+> `/data/home/.gitconfig` is read normally.)
+>
+> If you are on an **older image without the symlink**, verify with explicit
+> paths instead:
+>
+> ```bash
+> ssh -o UserKnownHostsFile=/data/home/.ssh/known_hosts \
+>     -i /data/home/.ssh/id_ed25519 -o IdentitiesOnly=yes -T git@github.com
+> # expect: "Hi <name>! You've successfully authenticated"
+> ```
 
 ## Add Projects In Ralphy
 
