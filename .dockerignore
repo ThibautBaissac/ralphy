@@ -1,0 +1,14 @@
+.git
+node_modules
+dist
+coverage
+playwright-report
+server/database/ralphy.db
+.env
+.env.*
+CLAUDE.local.md
+CLAUDE.local.md.example
+*.log
+.DS_Store
+.vscode
+.idea

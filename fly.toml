@@ -1,0 +1,50 @@
+app = "ralphy-prod"
+primary_region = "cdg"
+kill_signal = "SIGTERM"
+kill_timeout = 30
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  DISABLE_AUTOUPDATER = "1"
+  HOME = "/data/home"
+  DATABASE_PATH = "/data/ralphy/database/ralphy.db"
+  RALPHY_ARCHIVE_ROOT = "/data/ralphy/archive"
+  CLAUDE_CONFIG_ROOT = "/data/ralphy/users"
+  CODEX_CONFIG_ROOT = "/data/ralphy/users"
+  OPENCODE_CONFIG_ROOT = "/data/ralphy/users"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 50
+    hard_limit = 80
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+[[mounts]]
+  source = "ralphy_data"
+  destination = "/data"
+  initial_size = "20gb"
+  snapshot_retention = 14
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = "5gb"
+  auto_extend_size_limit = "100gb"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

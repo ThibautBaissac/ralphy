@@ -4,6 +4,7 @@
 
 .env
 node_modules/
+dist/
 server/database/ralphy.db
 
 # AI / agent scratch dirs
