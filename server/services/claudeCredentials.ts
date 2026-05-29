@@ -234,6 +234,7 @@ export interface ClaudeSdkEnv extends Record<string, string | undefined> {
   PATH: string | undefined;
   ANTHROPIC_API_KEY: undefined;
   ANTHROPIC_AUTH_TOKEN: undefined;
+  IS_SANDBOX: string | undefined;
 }
 
 // Sparse env handed to the SDK's `query({ options: { env } })`. The token is
@@ -247,6 +248,12 @@ export function buildClaudeSdkEnv(userId: number | string | undefined): ClaudeSd
     PATH: process.env.PATH,
     ANTHROPIC_API_KEY: undefined,
     ANTHROPIC_AUTH_TOKEN: undefined,
+    // Forward IS_SANDBOX so deployments running as root (e.g. the Docker/Fly
+    // image) can opt into Claude Code's sandbox mode. Without it, the CLI
+    // rejects --dangerously-skip-permissions (Ralphy's bypassPermissions mode)
+    // under root and the agent subprocess exits 1 before streaming anything.
+    // Unset in local dev, where it stays undefined and is dropped.
+    IS_SANDBOX: process.env.IS_SANDBOX,
   };
 }
 
