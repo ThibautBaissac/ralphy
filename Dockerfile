@@ -16,6 +16,18 @@ RUN apt-get update \
     tini \
   && rm -rf /var/lib/apt/lists/*
 
+# GitHub CLI — the PR agent shells out to `gh` (gh pr create / checks / view).
+# Installed from GitHub's official apt repo.
+RUN mkdir -p -m 755 /etc/apt/keyrings \
+  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       -o /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       > /etc/apt/sources.list.d/github-cli.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends gh \
+  && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 RUN corepack enable
