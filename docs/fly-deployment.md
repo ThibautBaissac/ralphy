@@ -436,25 +436,66 @@ credentials — and the SSH deploy key only authorizes `git push`, not the GitHu
 API. Without auth the agent stops with *"The gh CLI is not available and there's
 no GitHub token in the environment."*
 
-Authenticate `gh` once on the volume. Its config lives at
+Authenticate `gh` **once** on the volume. Its config lives at
 `/data/home/.config/gh` (`$HOME/.config/gh`), which every agent inherits via
-`HOME=/data/home`, so a single login covers all providers and survives deploys:
+`HOME=/data/home` — so a single login covers all providers (Claude, Codex,
+OpenCode), persists across deploys (it's on the volume, not the image), and
+needs **no** code change or token-forwarding into the agent env.
 
-1. Create a GitHub token scoped to the repos Ralphy manages:
-   - **Fine-grained** (preferred): *Contents: Read and write* + *Pull requests:
-     Read and write* on the target repos.
-   - or a **classic** token with the `repo` scope.
-2. Log in non-interactively (inside `fly ssh console`):
+Run the login yourself in an interactive session so the token never passes
+through a script or command history.
 
-   ```bash
-   export HOME=/data/home
-   echo "<TOKEN>" | gh auth login --git-protocol ssh --with-token
-   gh auth status                         # expect: Logged in to github.com as <user>
-   ```
+#### Option A — web/device flow (recommended, no token to manage)
 
-`gh` stores the token under `/data/home/.config/gh/hosts.yml` on the volume. The
-branch is pushed over SSH (the deploy key), and `gh pr create` then opens the PR
-over the API with this token.
+Open an interactive shell on the Machine from your own terminal:
+
+```bash
+fly ssh console --app ralphy-prod
+```
+
+then, inside the Machine:
+
+```bash
+export HOME=/data/home
+gh auth login
+```
+
+Answer the prompts: **GitHub.com** → **SSH** (git protocol) → your key (or
+skip) → **Login with a web browser**. `gh` prints a one-time code; open
+`https://github.com/login/device`, paste the code, and authorize. Confirm:
+
+```bash
+gh auth status      # expect: Logged in to github.com account <you>
+```
+
+#### Option B — personal access token (non-interactive)
+
+Create a token scoped to the repos Ralphy manages, then paste it at the prompt:
+
+- **Fine-grained** (preferred): *Contents: Read and write* + *Pull requests:
+  Read and write* on the target repos.
+- or a **classic** token with the `repo` scope.
+
+```bash
+export HOME=/data/home
+gh auth login --git-protocol ssh --with-token     # paste token, then Ctrl-D
+gh auth status
+```
+
+Avoid `echo "<token>" | gh auth login …` — the secret would land in your shell
+history and the process list. Paste it at the interactive prompt instead.
+
+Either way, `gh` writes the token to `/data/home/.config/gh/hosts.yml` on the
+volume. The PR agent pushes the branch over SSH (the deploy key) and then runs
+`gh pr create`, which opens the PR over the GitHub API with this credential.
+
+> **Verify the agent context sees it.** Agents run with a sparse env
+> (`HOME=/data/home`, no `GH_CONFIG_DIR`/`XDG_CONFIG_HOME`), so `gh` falls back
+> to `$HOME/.config/gh` — the same dir you logged into. Confirm with:
+>
+> ```bash
+> fly ssh console --app ralphy-prod -C "/bin/bash -c 'HOME=/data/home gh auth status'"
+> ```
 
 ## Add Projects In Ralphy
 
